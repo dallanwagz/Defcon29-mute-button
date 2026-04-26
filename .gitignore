@@ -1,0 +1,13 @@
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Microchip Studio / Atmel Studio
+.vs/
+Firmware/Source/DC29/Debug/
+Firmware/Source/DC29/Release/
+*.user
+
+# Build artifacts that shouldn't be committed
+Firmware/Compiled/DC29.hex
+build_errors.txt
