@@ -1,0 +1,589 @@
+------ Build started: Project: DC29, Configuration: Release ARM ------
+Build started.
+Project "DC29.cproj" (default targets):
+Target "PreBuildEvent" skipped, due to false condition; ('$(PreBuildEvent)'!='') was evaluated as (''!='').
+Target "CoreBuild" in file "C:\Program Files (x86)\Atmel\Studio\7.0\Vs\Compiler.targets" from project "C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\DC29.cproj" (target "Build" depends on it):
+	Using "RunCompilerTask" task from assembly "C:\Program Files (x86)\Atmel\Studio\7.0\Extensions\Application\AvrGCC.dll".
+	Task "RunCompilerTask"
+		Shell Utils Path C:\Program Files (x86)\Atmel\Studio\7.0\shellUtils
+		C:\Program Files (x86)\Atmel\Studio\7.0\shellUtils\make.exe all --jobs 4 --output-sync 
+		Building file: ../src/keys.c
+		Invoking: ARM/GNU C Compiler : 6.3.1
+		"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\arm\arm-gnu-toolchain\bin\arm-none-eabi-gcc.exe"  -x c -mthumb -D__SAMD21G16B__ -DNDEBUG -DBOARD=SAMD21_XPLAINED_PRO -D__SAMD21J18A__ -DEXTINT_CALLBACK_MODE=true -DUDD_ENABLE -DARM_MATH_CM0PLUS=true -DUSB_DEVICE_LPM_SUPPORT -DUSART_CALLBACK_MODE=true -DSYSTICK_MODE -DRTC_COUNT_ASYNC=true -DTC_ASYNC=false -DTCC_ASYNC=false  -I"../src" -I"../src/ASF/common/services/usb/class/hid/device" -I"../src/ASF/common/services/usb/class/hid" -I"../src/ASF/common/services/usb/udc" -I"../src/ASF/sam0/drivers/usb" -I"../src/ASF/sam0/drivers/usb/usb_sam_d_r" -I"../src/ASF/sam0/utils" -I"../src/ASF/sam0/utils/header_files" -I"../src/ASF/sam0/utils/preprocessor" -I"../src/ASF/thirdparty/CMSIS/Include" -I"../src/ASF/thirdparty/CMSIS/Lib/GCC" -I"../src/ASF/common/utils" -I"../src/ASF/sam0/utils/cmsis/samd21/include" -I"../src/ASF/sam0/utils/cmsis/samd21/source" -I"../src/ASF/sam0/drivers/system" -I"../src/ASF/sam0/drivers/system/clock/clock_samd21_r21_da_ha1" -I"../src/ASF/sam0/drivers/system/clock" -I"../src/ASF/sam0/drivers/system/interrupt" -I"../src/ASF/sam0/drivers/system/interrupt/system_interrupt_samd21" -I"../src/ASF/sam0/drivers/system/pinmux" -I"../src/ASF/sam0/drivers/system/power" -I"../src/ASF/sam0/drivers/system/power/power_sam_d_r_h" -I"../src/ASF/sam0/drivers/system/reset" -I"../src/ASF/sam0/drivers/system/reset/reset_sam_d_r_h" -I"../src/ASF/sam0/drivers/usb/stack_interface" -I"../src/ASF/sam0/drivers/extint" -I"../src/ASF/sam0/drivers/port" -I"../src/ASF/common/services/sleepmgr" -I"../src/ASF/common/services/usb" -I"../src/ASF/sam0/boards/samd21_xplained_pro" -I"../src/ASF/sam0/boards" -I"../src/ASF/common/boards" -I"../src/config" -I"../src/ASF/sam0/drivers/sercom" -I"../src/ASF/sam0/drivers/sercom/usart" -I"../src/ASF/common2/services/delay" -I"../src/ASF/common2/services/delay/sam0" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd/include" -I"../src/ASF/sam0/drivers/rtc" -I"../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h" -I"../src/ASF/common/services/usb/class/hid/device/kbd" -I"../src/ASF/sam0/drivers/nvm" -I"../src/ASF/sam0/services/eeprom/emulator/rwwee_array" -I"../src/ASF/sam0/drivers/tc" -I"../src/ASF/sam0/drivers/tc/tc_sam_d_r_h" -I"../src/ASF/sam0/drivers/tcc" -I"../src/ASF/common/services/usb/class/cdc" -I"../src/ASF/common/services/usb/class/cdc/device" -I"../src/ASF/common/services/usb/class/composite/device"  -Os -fdata-sections -ffunction-sections -mlong-calls -Wall -mcpu=cortex-m0plus -c -pipe -fno-strict-aliasing -Wall -Wstrict-prototypes -Wmissing-prototypes -Werror-implicit-function-declaration -Wpointer-arith -std=gnu99 -ffunction-sections -fdata-sections -Wchar-subscripts -Wcomment -Wformat=2 -Wimplicit-int -Wmain -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wtrigraphs -Wunused -Wuninitialized -Wunknown-pragmas -Wfloat-equal -Wundef -Wshadow -Wbad-function-cast -Wwrite-strings -Wsign-compare -Waggregate-return  -Wmissing-declarations -Wformat -Wmissing-format-attribute -Wno-deprecated-declarations -Wpacked -Wredundant-decls -Wnested-externs -Wlong-long -Wunreachable-code -Wcast-align --param max-inline-insns-single=500 -MD -MP -MF "src/keys.d" -MT"src/keys.d" -MT"src/keys.o"   -o "src/keys.o" "../src/keys.c" 
+		Finished building: ../src/keys.c
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/keys.h:11,
+		                 from ../src/keys.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,4): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		    ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,26): warning: "USB_PHDC_QOS_MEDIUM_BETTER" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		                          ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,53): warning: "USB_PHDC_QOS_MEDIUM_BEST" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		                                                     ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,23): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                       ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,47): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                                               ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		In file included from ../src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.h:40:0,
+		                 from ../src/config/conf_usb.h:531,
+		                 from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/keys.h:11,
+		                 from ../src/keys.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		In file included from ../src/keys.h:11:0,
+		                 from ../src/keys.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\main.h(231,6): warning: redundant redeclaration of 'main_cdc_enable' [-Wredundant-decls]
+		 bool main_cdc_enable(uint8_t port);
+		      ^~~~~~~~~~~~~~~
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/keys.h:11,
+		                 from ../src/keys.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(104,13): info: previous declaration of 'main_cdc_enable' was here
+		 extern bool main_cdc_enable(uint8_t port);
+		             ^~~~~~~~~~~~~~~
+		In file included from ../src/keys.h:11:0,
+		                 from ../src/keys.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\main.h(232,6): warning: redundant redeclaration of 'main_cdc_disable' [-Wredundant-decls]
+		 void main_cdc_disable(uint8_t port);
+		      ^~~~~~~~~~~~~~~~
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/keys.h:11,
+		                 from ../src/keys.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(105,13): info: previous declaration of 'main_cdc_disable' was here
+		 extern void main_cdc_disable(uint8_t port);
+		             ^~~~~~~~~~~~~~~~
+		In file included from ../src/keys.h:11:0,
+		                 from ../src/keys.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\main.h(233,6): warning: redundant redeclaration of 'main_cdc_set_dtr' [-Wredundant-decls]
+		 void main_cdc_set_dtr(uint8_t port, bool b_enable);
+		      ^~~~~~~~~~~~~~~~
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/keys.h:11,
+		                 from ../src/keys.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(106,13): info: previous declaration of 'main_cdc_set_dtr' was here
+		 extern void main_cdc_set_dtr(uint8_t port, bool b_enable);
+		             ^~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\keys.c(18,13): warning: redundant redeclaration of 'udi_hid_kbd_b_report_trans_ongoing' [-Wredundant-decls]
+		 extern bool udi_hid_kbd_b_report_trans_ongoing;
+		             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		In file included from ../src/config/conf_usb.h:531:0,
+		                 from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/keys.h:11,
+		                 from ../src/keys.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\ASF\common\services\usb\class\hid\device\kbd\udi_hid_kbd.h(115,13): info: previous declaration of 'udi_hid_kbd_b_report_trans_ongoing' was here
+		 static bool udi_hid_kbd_b_report_trans_ongoing;
+		             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\keys.c(18,13): warning: 'udi_hid_kbd_b_report_trans_ongoing' defined but not used [-Wunused-variable]
+		 extern bool udi_hid_kbd_b_report_trans_ongoing;
+		             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Building file: ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.c
+		Invoking: ARM/GNU C Compiler : 6.3.1
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.c:37:0:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,4): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		    ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,26): warning: "USB_PHDC_QOS_MEDIUM_BETTER" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		                          ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\arm\arm-gnu-toolchain\bin\arm-none-eabi-gcc.exe"  -x c -mthumb -D__SAMD21G16B__ -DNDEBUG -DBOARD=SAMD21_XPLAINED_PRO -D__SAMD21J18A__ -DEXTINT_CALLBACK_MODE=true -DUDD_ENABLE -DARM_MATH_CM0PLUS=true -DUSB_DEVICE_LPM_SUPPORT -DUSART_CALLBACK_MODE=true -DSYSTICK_MODE -DRTC_COUNT_ASYNC=true -DTC_ASYNC=false -DTCC_ASYNC=false  -I"../src" -I"../src/ASF/common/services/usb/class/hid/device" -I"../src/ASF/common/services/usb/class/hid" -I"../src/ASF/common/services/usb/udc" -I"../src/ASF/sam0/drivers/usb" -I"../src/ASF/sam0/drivers/usb/usb_sam_d_r" -I"../src/ASF/sam0/utils" -I"../src/ASF/sam0/utils/header_files" -I"../src/ASF/sam0/utils/preprocessor" -I"../src/ASF/thirdparty/CMSIS/Include" -I"../src/ASF/thirdparty/CMSIS/Lib/GCC" -I"../src/ASF/common/utils" -I"../src/ASF/sam0/utils/cmsis/samd21/include" -I"../src/ASF/sam0/utils/cmsis/samd21/source" -I"../src/ASF/sam0/drivers/system" -I"../src/ASF/sam0/drivers/system/clock/clock_samd21_r21_da_ha1" -I"../src/ASF/sam0/drivers/system/clock" -I"../src/ASF/sam0/drivers/system/interrupt" -I"../src/ASF/sam0/drivers/system/interrupt/system_interrupt_samd21" -I"../src/ASF/sam0/drivers/system/pinmux" -I"../src/ASF/sam0/drivers/system/power" -I"../src/ASF/sam0/drivers/system/power/power_sam_d_r_h" -I"../src/ASF/sam0/drivers/system/reset" -I"../src/ASF/sam0/drivers/system/reset/reset_sam_d_r_h" -I"../src/ASF/sam0/drivers/usb/stack_interface" -I"../src/ASF/sam0/drivers/extint" -I"../src/ASF/sam0/drivers/port" -I"../src/ASF/common/services/sleepmgr" -I"../src/ASF/common/services/usb" -I"../src/ASF/sam0/boards/samd21_xplained_pro" -I"../src/ASF/sam0/boards" -I"../src/ASF/common/boards" -I"../src/config" -I"../src/ASF/sam0/drivers/sercom" -I"../src/ASF/sam0/drivers/sercom/usart" -I"../src/ASF/common2/services/delay" -I"../src/ASF/common2/services/delay/sam0" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd/include" -I"../src/ASF/sam0/drivers/rtc" -I"../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h" -I"../src/ASF/common/services/usb/class/hid/device/kbd" -I"../src/ASF/sam0/drivers/nvm" -I"../src/ASF/sam0/services/eeprom/emulator/rwwee_array" -I"../src/ASF/sam0/drivers/tc" -I"../src/ASF/sam0/drivers/tc/tc_sam_d_r_h" -I"../src/ASF/sam0/drivers/tcc" -I"../src/ASF/common/services/usb/class/cdc" -I"../src/ASF/common/services/usb/class/cdc/device" -I"../src/ASF/common/services/usb/class/composite/device"  -Os -fdata-sections -ffunction-sections -mlong-calls -Wall -mcpu=cortex-m0plus -c -pipe -fno-strict-aliasing -Wall -Wstrict-prototypes -Wmissing-prototypes -Werror-implicit-function-declaration -Wpointer-arith -std=gnu99 -ffunction-sections -fdata-sections -Wchar-subscripts -Wcomment -Wformat=2 -Wimplicit-int -Wmain -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wtrigraphs -Wunused -Wuninitialized -Wunknown-pragmas -Wfloat-equal -Wundef -Wshadow -Wbad-function-cast -Wwrite-strings -Wsign-compare -Waggregate-return  -Wmissing-declarations -Wformat -Wmissing-format-attribute -Wno-deprecated-declarations -Wpacked -Wredundant-decls -Wnested-externs -Wlong-long -Wunreachable-code -Wcast-align --param max-inline-insns-single=500 -MD -MP -MF "src/ASF/common/services/usb/class/cdc/device/udi_cdc.d" -MT"src/ASF/common/services/usb/class/cdc/device/udi_cdc.d" -MT"src/ASF/common/services/usb/class/cdc/device/udi_cdc.o"   -o "src/ASF/common/services/usb/class/cdc/device/udi_cdc.o" "../src/ASF/common/services/usb/class/cdc/device/udi_cdc.c" 
+		Finished building: ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.c
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,53): warning: "USB_PHDC_QOS_MEDIUM_BEST" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		                                                     ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,23): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                       ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,47): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                                               ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		In file included from ../src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.h:40:0,
+		                 from ../src/config/conf_usb.h:531,
+		                 from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.c:37:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		In file included from ../src/config/conf_usb.h:531:0,
+		                 from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.c:37:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\ASF\common\services\usb\class\hid\device\kbd\udi_hid_kbd.h(115,13): warning: 'udi_hid_kbd_b_report_trans_ongoing' defined but not used [-Wunused-variable]
+		 static bool udi_hid_kbd_b_report_trans_ongoing;
+		             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Building file: ../src/games.c
+		Invoking: ARM/GNU C Compiler : 6.3.1
+		"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\arm\arm-gnu-toolchain\bin\arm-none-eabi-gcc.exe"  -x c -mthumb -D__SAMD21G16B__ -DNDEBUG -DBOARD=SAMD21_XPLAINED_PRO -D__SAMD21J18A__ -DEXTINT_CALLBACK_MODE=true -DUDD_ENABLE -DARM_MATH_CM0PLUS=true -DUSB_DEVICE_LPM_SUPPORT -DUSART_CALLBACK_MODE=true -DSYSTICK_MODE -DRTC_COUNT_ASYNC=true -DTC_ASYNC=false -DTCC_ASYNC=false  -I"../src" -I"../src/ASF/common/services/usb/class/hid/device" -I"../src/ASF/common/services/usb/class/hid" -I"../src/ASF/common/services/usb/udc" -I"../src/ASF/sam0/drivers/usb" -I"../src/ASF/sam0/drivers/usb/usb_sam_d_r" -I"../src/ASF/sam0/utils" -I"../src/ASF/sam0/utils/header_files" -I"../src/ASF/sam0/utils/preprocessor" -I"../src/ASF/thirdparty/CMSIS/Include" -I"../src/ASF/thirdparty/CMSIS/Lib/GCC" -I"../src/ASF/common/utils" -I"../src/ASF/sam0/utils/cmsis/samd21/include" -I"../src/ASF/sam0/utils/cmsis/samd21/source" -I"../src/ASF/sam0/drivers/system" -I"../src/ASF/sam0/drivers/system/clock/clock_samd21_r21_da_ha1" -I"../src/ASF/sam0/drivers/system/clock" -I"../src/ASF/sam0/drivers/system/interrupt" -I"../src/ASF/sam0/drivers/system/interrupt/system_interrupt_samd21" -I"../src/ASF/sam0/drivers/system/pinmux" -I"../src/ASF/sam0/drivers/system/power" -I"../src/ASF/sam0/drivers/system/power/power_sam_d_r_h" -I"../src/ASF/sam0/drivers/system/reset" -I"../src/ASF/sam0/drivers/system/reset/reset_sam_d_r_h" -I"../src/ASF/sam0/drivers/usb/stack_interface" -I"../src/ASF/sam0/drivers/extint" -I"../src/ASF/sam0/drivers/port" -I"../src/ASF/common/services/sleepmgr" -I"../src/ASF/common/services/usb" -I"../src/ASF/sam0/boards/samd21_xplained_pro" -I"../src/ASF/sam0/boards" -I"../src/ASF/common/boards" -I"../src/config" -I"../src/ASF/sam0/drivers/sercom" -I"../src/ASF/sam0/drivers/sercom/usart" -I"../src/ASF/common2/services/delay" -I"../src/ASF/common2/services/delay/sam0" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd/include" -I"../src/ASF/sam0/drivers/rtc" -I"../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h" -I"../src/ASF/common/services/usb/class/hid/device/kbd" -I"../src/ASF/sam0/drivers/nvm" -I"../src/ASF/sam0/services/eeprom/emulator/rwwee_array" -I"../src/ASF/sam0/drivers/tc" -I"../src/ASF/sam0/drivers/tc/tc_sam_d_r_h" -I"../src/ASF/sam0/drivers/tcc" -I"../src/ASF/common/services/usb/class/cdc" -I"../src/ASF/common/services/usb/class/cdc/device" -I"../src/ASF/common/services/usb/class/composite/device"  -Os -fdata-sections -ffunction-sections -mlong-calls -Wall -mcpu=cortex-m0plus -c -pipe -fno-strict-aliasing -Wall -Wstrict-prototypes -Wmissing-prototypes -Werror-implicit-function-declaration -Wpointer-arith -std=gnu99 -ffunction-sections -fdata-sections -Wchar-subscripts -Wcomment -Wformat=2 -Wimplicit-int -Wmain -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wtrigraphs -Wunused -Wuninitialized -Wunknown-pragmas -Wfloat-equal -Wundef -Wshadow -Wbad-function-cast -Wwrite-strings -Wsign-compare -Waggregate-return  -Wmissing-declarations -Wformat -Wmissing-format-attribute -Wno-deprecated-declarations -Wpacked -Wredundant-decls -Wnested-externs -Wlong-long -Wunreachable-code -Wcast-align --param max-inline-insns-single=500 -MD -MP -MF "src/games.d" -MT"src/games.d" -MT"src/games.o"   -o "src/games.o" "../src/games.c" 
+		Finished building: ../src/games.c
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/games.h:11,
+		                 from ../src/games.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,4): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		    ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,26): warning: "USB_PHDC_QOS_MEDIUM_BETTER" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		                          ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,53): warning: "USB_PHDC_QOS_MEDIUM_BEST" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		                                                     ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,23): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                       ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,47): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                                               ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		In file included from ../src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.h:40:0,
+		                 from ../src/config/conf_usb.h:531,
+		                 from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/games.h:11,
+		                 from ../src/games.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		In file included from ../src/games.h:11:0,
+		                 from ../src/games.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\main.h(231,6): warning: redundant redeclaration of 'main_cdc_enable' [-Wredundant-decls]
+		 bool main_cdc_enable(uint8_t port);
+		      ^~~~~~~~~~~~~~~
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/games.h:11,
+		                 from ../src/games.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(104,13): info: previous declaration of 'main_cdc_enable' was here
+		 extern bool main_cdc_enable(uint8_t port);
+		             ^~~~~~~~~~~~~~~
+		In file included from ../src/games.h:11:0,
+		                 from ../src/games.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\main.h(232,6): warning: redundant redeclaration of 'main_cdc_disable' [-Wredundant-decls]
+		 void main_cdc_disable(uint8_t port);
+		      ^~~~~~~~~~~~~~~~
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/games.h:11,
+		                 from ../src/games.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(105,13): info: previous declaration of 'main_cdc_disable' was here
+		 extern void main_cdc_disable(uint8_t port);
+		             ^~~~~~~~~~~~~~~~
+		In file included from ../src/games.h:11:0,
+		                 from ../src/games.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\main.h(233,6): warning: redundant redeclaration of 'main_cdc_set_dtr' [-Wredundant-decls]
+		 void main_cdc_set_dtr(uint8_t port, bool b_enable);
+		      ^~~~~~~~~~~~~~~~
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/games.h:11,
+		                 from ../src/games.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(106,13): info: previous declaration of 'main_cdc_set_dtr' was here
+		 extern void main_cdc_set_dtr(uint8_t port, bool b_enable);
+		             ^~~~~~~~~~~~~~~~
+		../src/games.c: In function 'run_games':
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\games.c(129,21): warning: comparison between signed and unsigned integer expressions [-Wsign-compare]
+		       for(int x=0; x<sizeof(sequence_buttons); x++){
+		                     ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\games.c(267,21): warning: comparison between signed and unsigned integer expressions [-Wsign-compare]
+		       for(int x=0; x<sizeof(sequence_buttons); x++){
+		                     ^
+		In file included from ../src/config/conf_usb.h:531:0,
+		                 from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/games.h:11,
+		                 from ../src/games.c:7:
+		At top level:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\ASF\common\services\usb\class\hid\device\kbd\udi_hid_kbd.h(115,13): warning: 'udi_hid_kbd_b_report_trans_ongoing' defined but not used [-Wunused-variable]
+		 static bool udi_hid_kbd_b_report_trans_ongoing;
+		             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Building file: ../src/serialconsole.c
+		Invoking: ARM/GNU C Compiler : 6.3.1
+		"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\arm\arm-gnu-toolchain\bin\arm-none-eabi-gcc.exe"  -x c -mthumb -D__SAMD21G16B__ -DNDEBUG -DBOARD=SAMD21_XPLAINED_PRO -D__SAMD21J18A__ -DEXTINT_CALLBACK_MODE=true -DUDD_ENABLE -DARM_MATH_CM0PLUS=true -DUSB_DEVICE_LPM_SUPPORT -DUSART_CALLBACK_MODE=true -DSYSTICK_MODE -DRTC_COUNT_ASYNC=true -DTC_ASYNC=false -DTCC_ASYNC=false  -I"../src" -I"../src/ASF/common/services/usb/class/hid/device" -I"../src/ASF/common/services/usb/class/hid" -I"../src/ASF/common/services/usb/udc" -I"../src/ASF/sam0/drivers/usb" -I"../src/ASF/sam0/drivers/usb/usb_sam_d_r" -I"../src/ASF/sam0/utils" -I"../src/ASF/sam0/utils/header_files" -I"../src/ASF/sam0/utils/preprocessor" -I"../src/ASF/thirdparty/CMSIS/Include" -I"../src/ASF/thirdparty/CMSIS/Lib/GCC" -I"../src/ASF/common/utils" -I"../src/ASF/sam0/utils/cmsis/samd21/include" -I"../src/ASF/sam0/utils/cmsis/samd21/source" -I"../src/ASF/sam0/drivers/system" -I"../src/ASF/sam0/drivers/system/clock/clock_samd21_r21_da_ha1" -I"../src/ASF/sam0/drivers/system/clock" -I"../src/ASF/sam0/drivers/system/interrupt" -I"../src/ASF/sam0/drivers/system/interrupt/system_interrupt_samd21" -I"../src/ASF/sam0/drivers/system/pinmux" -I"../src/ASF/sam0/drivers/system/power" -I"../src/ASF/sam0/drivers/system/power/power_sam_d_r_h" -I"../src/ASF/sam0/drivers/system/reset" -I"../src/ASF/sam0/drivers/system/reset/reset_sam_d_r_h" -I"../src/ASF/sam0/drivers/usb/stack_interface" -I"../src/ASF/sam0/drivers/extint" -I"../src/ASF/sam0/drivers/port" -I"../src/ASF/common/services/sleepmgr" -I"../src/ASF/common/services/usb" -I"../src/ASF/sam0/boards/samd21_xplained_pro" -I"../src/ASF/sam0/boards" -I"../src/ASF/common/boards" -I"../src/config" -I"../src/ASF/sam0/drivers/sercom" -I"../src/ASF/sam0/drivers/sercom/usart" -I"../src/ASF/common2/services/delay" -I"../src/ASF/common2/services/delay/sam0" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd/include" -I"../src/ASF/sam0/drivers/rtc" -I"../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h" -I"../src/ASF/common/services/usb/class/hid/device/kbd" -I"../src/ASF/sam0/drivers/nvm" -I"../src/ASF/sam0/services/eeprom/emulator/rwwee_array" -I"../src/ASF/sam0/drivers/tc" -I"../src/ASF/sam0/drivers/tc/tc_sam_d_r_h" -I"../src/ASF/sam0/drivers/tcc" -I"../src/ASF/common/services/usb/class/cdc" -I"../src/ASF/common/services/usb/class/cdc/device" -I"../src/ASF/common/services/usb/class/composite/device"  -Os -fdata-sections -ffunction-sections -mlong-calls -Wall -mcpu=cortex-m0plus -c -pipe -fno-strict-aliasing -Wall -Wstrict-prototypes -Wmissing-prototypes -Werror-implicit-function-declaration -Wpointer-arith -std=gnu99 -ffunction-sections -fdata-sections -Wchar-subscripts -Wcomment -Wformat=2 -Wimplicit-int -Wmain -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wtrigraphs -Wunused -Wuninitialized -Wunknown-pragmas -Wfloat-equal -Wundef -Wshadow -Wbad-function-cast -Wwrite-strings -Wsign-compare -Waggregate-return  -Wmissing-declarations -Wformat -Wmissing-format-attribute -Wno-deprecated-declarations -Wpacked -Wredundant-decls -Wnested-externs -Wlong-long -Wunreachable-code -Wcast-align --param max-inline-insns-single=500 -MD -MP -MF "src/serialconsole.d" -MT"src/serialconsole.d" -MT"src/serialconsole.o"   -o "src/serialconsole.o" "../src/serialconsole.c" 
+		Finished building: ../src/serialconsole.c
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/serialconsole.h:13,
+		                 from ../src/serialconsole.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,4): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		    ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,26): warning: "USB_PHDC_QOS_MEDIUM_BETTER" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		                          ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,53): warning: "USB_PHDC_QOS_MEDIUM_BEST" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		                                                     ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,23): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                       ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,47): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                                               ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		In file included from ../src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.h:40:0,
+		                 from ../src/config/conf_usb.h:531,
+		                 from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/serialconsole.h:13,
+		                 from ../src/serialconsole.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		In file included from ../src/serialconsole.h:13:0,
+		                 from ../src/serialconsole.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\main.h(231,6): warning: redundant redeclaration of 'main_cdc_enable' [-Wredundant-decls]
+		 bool main_cdc_enable(uint8_t port);
+		      ^~~~~~~~~~~~~~~
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/serialconsole.h:13,
+		                 from ../src/serialconsole.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(104,13): info: previous declaration of 'main_cdc_enable' was here
+		 extern bool main_cdc_enable(uint8_t port);
+		             ^~~~~~~~~~~~~~~
+		In file included from ../src/serialconsole.h:13:0,
+		                 from ../src/serialconsole.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\main.h(232,6): warning: redundant redeclaration of 'main_cdc_disable' [-Wredundant-decls]
+		 void main_cdc_disable(uint8_t port);
+		      ^~~~~~~~~~~~~~~~
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/serialconsole.h:13,
+		                 from ../src/serialconsole.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(105,13): info: previous declaration of 'main_cdc_disable' was here
+		 extern void main_cdc_disable(uint8_t port);
+		             ^~~~~~~~~~~~~~~~
+		In file included from ../src/serialconsole.h:13:0,
+		                 from ../src/serialconsole.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\main.h(233,6): warning: redundant redeclaration of 'main_cdc_set_dtr' [-Wredundant-decls]
+		 void main_cdc_set_dtr(uint8_t port, bool b_enable);
+		      ^~~~~~~~~~~~~~~~
+		In file included from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40:0,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/serialconsole.h:13,
+		                 from ../src/serialconsole.c:7:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(106,13): info: previous declaration of 'main_cdc_set_dtr' was here
+		 extern void main_cdc_set_dtr(uint8_t port, bool b_enable);
+		             ^~~~~~~~~~~~~~~~
+		../src/serialconsole.c: In function 'updateSerialConsole':
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\serialconsole.c(456,21): warning: comparison between signed and unsigned integer expressions [-Wsign-compare]
+		       for(int x=0; x<sizeof(newKeystroke); x++){newKeystroke[x] = 0;}
+		                     ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\serialconsole.c(851,30): warning: comparison between signed and unsigned integer expressions [-Wsign-compare]
+		       if(newKeystrokeCounter < sizeof(newKeystroke)){
+		                              ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\serialconsole.c(856,22): warning: comparison between signed and unsigned integer expressions [-Wsign-compare]
+		        for(int x=0; x<sizeof(newKeystroke); x++){newKeystroke[x] = 0;}
+		                      ^
+		In file included from ../src/config/conf_usb.h:531:0,
+		                 from ../src/ASF/common/services/usb/class/cdc/device/udi_cdc.h:40,
+		                 from ../src/asf.h:139,
+		                 from ../src/main.h:40,
+		                 from ../src/serialconsole.h:13,
+		                 from ../src/serialconsole.c:7:
+		At top level:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\ASF\common\services\usb\class\hid\device\kbd\udi_hid_kbd.h(115,13): warning: 'udi_hid_kbd_b_report_trans_ongoing' defined but not used [-Wunused-variable]
+		 static bool udi_hid_kbd_b_report_trans_ongoing;
+		             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		../src/serialconsole.c: In function 'updateSerialConsole':
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\serialconsole.c(881,23): warning: 'new_serial_num' may be used uninitialized in this function [-Wmaybe-uninitialized]
+		        new_serial_num |= tempnum << 28;
+		        ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+		Building file: ../src/ASF/common/services/usb/class/composite/device/udi_composite_desc.c
+		Invoking: ARM/GNU C Compiler : 6.3.1
+		"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\arm\arm-gnu-toolchain\bin\arm-none-eabi-gcc.exe"  -x c -mthumb -D__SAMD21G16B__ -DNDEBUG -DBOARD=SAMD21_XPLAINED_PRO -D__SAMD21J18A__ -DEXTINT_CALLBACK_MODE=true -DUDD_ENABLE -DARM_MATH_CM0PLUS=true -DUSB_DEVICE_LPM_SUPPORT -DUSART_CALLBACK_MODE=true -DSYSTICK_MODE -DRTC_COUNT_ASYNC=true -DTC_ASYNC=false -DTCC_ASYNC=false  -I"../src" -I"../src/ASF/common/services/usb/class/hid/device" -I"../src/ASF/common/services/usb/class/hid" -I"../src/ASF/common/services/usb/udc" -I"../src/ASF/sam0/drivers/usb" -I"../src/ASF/sam0/drivers/usb/usb_sam_d_r" -I"../src/ASF/sam0/utils" -I"../src/ASF/sam0/utils/header_files" -I"../src/ASF/sam0/utils/preprocessor" -I"../src/ASF/thirdparty/CMSIS/Include" -I"../src/ASF/thirdparty/CMSIS/Lib/GCC" -I"../src/ASF/common/utils" -I"../src/ASF/sam0/utils/cmsis/samd21/include" -I"../src/ASF/sam0/utils/cmsis/samd21/source" -I"../src/ASF/sam0/drivers/system" -I"../src/ASF/sam0/drivers/system/clock/clock_samd21_r21_da_ha1" -I"../src/ASF/sam0/drivers/system/clock" -I"../src/ASF/sam0/drivers/system/interrupt" -I"../src/ASF/sam0/drivers/system/interrupt/system_interrupt_samd21" -I"../src/ASF/sam0/drivers/system/pinmux" -I"../src/ASF/sam0/drivers/system/power" -I"../src/ASF/sam0/drivers/system/power/power_sam_d_r_h" -I"../src/ASF/sam0/drivers/system/reset" -I"../src/ASF/sam0/drivers/system/reset/reset_sam_d_r_h" -I"../src/ASF/sam0/drivers/usb/stack_interface" -I"../src/ASF/sam0/drivers/extint" -I"../src/ASF/sam0/drivers/port" -I"../src/ASF/common/services/sleepmgr" -I"../src/ASF/common/services/usb" -I"../src/ASF/sam0/boards/samd21_xplained_pro" -I"../src/ASF/sam0/boards" -I"../src/ASF/common/boards" -I"../src/config" -I"../src/ASF/sam0/drivers/sercom" -I"../src/ASF/sam0/drivers/sercom/usart" -I"../src/ASF/common2/services/delay" -I"../src/ASF/common2/services/delay/sam0" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd/include" -I"../src/ASF/sam0/drivers/rtc" -I"../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h" -I"../src/ASF/common/services/usb/class/hid/device/kbd" -I"../src/ASF/sam0/drivers/nvm" -I"../src/ASF/sam0/services/eeprom/emulator/rwwee_array" -I"../src/ASF/sam0/drivers/tc" -I"../src/ASF/sam0/drivers/tc/tc_sam_d_r_h" -I"../src/ASF/sam0/drivers/tcc" -I"../src/ASF/common/services/usb/class/cdc" -I"../src/ASF/common/services/usb/class/cdc/device" -I"../src/ASF/common/services/usb/class/composite/device"  -Os -fdata-sections -ffunction-sections -mlong-calls -Wall -mcpu=cortex-m0plus -c -pipe -fno-strict-aliasing -Wall -Wstrict-prototypes -Wmissing-prototypes -Werror-implicit-function-declaration -Wpointer-arith -std=gnu99 -ffunction-sections -fdata-sections -Wchar-subscripts -Wcomment -Wformat=2 -Wimplicit-int -Wmain -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wtrigraphs -Wunused -Wuninitialized -Wunknown-pragmas -Wfloat-equal -Wundef -Wshadow -Wbad-function-cast -Wwrite-strings -Wsign-compare -Waggregate-return  -Wmissing-declarations -Wformat -Wmissing-format-attribute -Wno-deprecated-declarations -Wpacked -Wredundant-decls -Wnested-externs -Wlong-long -Wunreachable-code -Wcast-align --param max-inline-insns-single=500 -MD -MP -MF "src/ASF/common/services/usb/class/composite/device/udi_composite_desc.d" -MT"src/ASF/common/services/usb/class/composite/device/udi_composite_desc.d" -MT"src/ASF/common/services/usb/class/composite/device/udi_composite_desc.o"   -o "src/ASF/common/services/usb/class/composite/device/udi_composite_desc.o" "../src/ASF/common/services/usb/class/composite/device/udi_composite_desc.c" 
+		Finished building: ../src/ASF/common/services/usb/class/composite/device/udi_composite_desc.c
+		In file included from ../src/ASF/common/services/usb/class/composite/device/udi_composite_desc.c:37:0:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,4): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		    ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,26): warning: "USB_PHDC_QOS_MEDIUM_BETTER" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		                          ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,53): warning: "USB_PHDC_QOS_MEDIUM_BEST" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		                                                     ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,23): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                       ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,47): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                                               ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		In file included from ../src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.h:40:0,
+		                 from ../src/config/conf_usb.h:531,
+		                 from ../src/ASF/common/services/usb/class/composite/device/udi_composite_desc.c:37:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		In file included from ../src/config/conf_usb.h:531:0,
+		                 from ../src/ASF/common/services/usb/class/composite/device/udi_composite_desc.c:37:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\ASF\common\services\usb\class\hid\device\kbd\udi_hid_kbd.h(115,13): warning: 'udi_hid_kbd_b_report_trans_ongoing' defined but not used [-Wunused-variable]
+		 static bool udi_hid_kbd_b_report_trans_ongoing;
+		             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Building file: ../src/ASF/sam0/drivers/nvm/nvm.c
+		Invoking: ARM/GNU C Compiler : 6.3.1
+		../src/ASF/sam0/drivers/nvm/nvm.c: In function 'nvm_execute_command':
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\ASF\sam0\drivers\nvm\nvm.c(194,29): error: 'NVMCTRL_RWW_EEPROM_SIZE' undeclared (first use in this function)
+		   if (address >= ((uint32_t)NVMCTRL_RWW_EEPROM_SIZE + NVMCTRL_RWW_EEPROM_ADDR)
+		                             ^~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\ASF\sam0\drivers\nvm\nvm.c(194,29): info: each undeclared identifier is reported only once for each function it appears in
+		../src/ASF/sam0/drivers/nvm/nvm.c: In function 'nvm_write_buffer':
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\ASF\sam0\drivers\nvm\nvm.c(450,41): error: 'NVMCTRL_RWW_EEPROM_SIZE' undeclared (first use in this function)
+		   if (destination_address >= ((uint32_t)NVMCTRL_RWW_EEPROM_SIZE + NVMCTRL_RWW_EEPROM_ADDR)
+		                                         ^~~~~~~~~~~~~~~~~~~~~~~
+		../src/ASF/sam0/drivers/nvm/nvm.c: In function 'nvm_read_buffer':
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\ASF\sam0\drivers\nvm\nvm.c(557,36): error: 'NVMCTRL_RWW_EEPROM_SIZE' undeclared (first use in this function)
+		   if (source_address >= ((uint32_t)NVMCTRL_RWW_EEPROM_SIZE + NVMCTRL_RWW_EEPROM_ADDR)
+		                                    ^~~~~~~~~~~~~~~~~~~~~~~
+		../src/ASF/sam0/drivers/nvm/nvm.c: In function 'nvm_erase_row':
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\ASF\sam0\drivers\nvm\nvm.c(637,33): error: 'NVMCTRL_RWW_EEPROM_SIZE' undeclared (first use in this function)
+		   if (row_address >= ((uint32_t)NVMCTRL_RWW_EEPROM_SIZE + NVMCTRL_RWW_EEPROM_ADDR)
+		                                 ^~~~~~~~~~~~~~~~~~~~~~~
+		make: *** [src/ASF/sam0/drivers/nvm/nvm.o] Error 1
+		"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\arm\arm-gnu-toolchain\bin\arm-none-eabi-gcc.exe"  -x c -mthumb -D__SAMD21G16B__ -DNDEBUG -DBOARD=SAMD21_XPLAINED_PRO -D__SAMD21J18A__ -DEXTINT_CALLBACK_MODE=true -DUDD_ENABLE -DARM_MATH_CM0PLUS=true -DUSB_DEVICE_LPM_SUPPORT -DUSART_CALLBACK_MODE=true -DSYSTICK_MODE -DRTC_COUNT_ASYNC=true -DTC_ASYNC=false -DTCC_ASYNC=false  -I"../src" -I"../src/ASF/common/services/usb/class/hid/device" -I"../src/ASF/common/services/usb/class/hid" -I"../src/ASF/common/services/usb/udc" -I"../src/ASF/sam0/drivers/usb" -I"../src/ASF/sam0/drivers/usb/usb_sam_d_r" -I"../src/ASF/sam0/utils" -I"../src/ASF/sam0/utils/header_files" -I"../src/ASF/sam0/utils/preprocessor" -I"../src/ASF/thirdparty/CMSIS/Include" -I"../src/ASF/thirdparty/CMSIS/Lib/GCC" -I"../src/ASF/common/utils" -I"../src/ASF/sam0/utils/cmsis/samd21/include" -I"../src/ASF/sam0/utils/cmsis/samd21/source" -I"../src/ASF/sam0/drivers/system" -I"../src/ASF/sam0/drivers/system/clock/clock_samd21_r21_da_ha1" -I"../src/ASF/sam0/drivers/system/clock" -I"../src/ASF/sam0/drivers/system/interrupt" -I"../src/ASF/sam0/drivers/system/interrupt/system_interrupt_samd21" -I"../src/ASF/sam0/drivers/system/pinmux" -I"../src/ASF/sam0/drivers/system/power" -I"../src/ASF/sam0/drivers/system/power/power_sam_d_r_h" -I"../src/ASF/sam0/drivers/system/reset" -I"../src/ASF/sam0/drivers/system/reset/reset_sam_d_r_h" -I"../src/ASF/sam0/drivers/usb/stack_interface" -I"../src/ASF/sam0/drivers/extint" -I"../src/ASF/sam0/drivers/port" -I"../src/ASF/common/services/sleepmgr" -I"../src/ASF/common/services/usb" -I"../src/ASF/sam0/boards/samd21_xplained_pro" -I"../src/ASF/sam0/boards" -I"../src/ASF/common/boards" -I"../src/config" -I"../src/ASF/sam0/drivers/sercom" -I"../src/ASF/sam0/drivers/sercom/usart" -I"../src/ASF/common2/services/delay" -I"../src/ASF/common2/services/delay/sam0" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd/include" -I"../src/ASF/sam0/drivers/rtc" -I"../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h" -I"../src/ASF/common/services/usb/class/hid/device/kbd" -I"../src/ASF/sam0/drivers/nvm" -I"../src/ASF/sam0/services/eeprom/emulator/rwwee_array" -I"../src/ASF/sam0/drivers/tc" -I"../src/ASF/sam0/drivers/tc/tc_sam_d_r_h" -I"../src/ASF/sam0/drivers/tcc" -I"../src/ASF/common/services/usb/class/cdc" -I"../src/ASF/common/services/usb/class/cdc/device" -I"../src/ASF/common/services/usb/class/composite/device"  -Os -fdata-sections -ffunction-sections -mlong-calls -Wall -mcpu=cortex-m0plus -c -pipe -fno-strict-aliasing -Wall -Wstrict-prototypes -Wmissing-prototypes -Werror-implicit-function-declaration -Wpointer-arith -std=gnu99 -ffunction-sections -fdata-sections -Wchar-subscripts -Wcomment -Wformat=2 -Wimplicit-int -Wmain -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wtrigraphs -Wunused -Wuninitialized -Wunknown-pragmas -Wfloat-equal -Wundef -Wshadow -Wbad-function-cast -Wwrite-strings -Wsign-compare -Waggregate-return  -Wmissing-declarations -Wformat -Wmissing-format-attribute -Wno-deprecated-declarations -Wpacked -Wredundant-decls -Wnested-externs -Wlong-long -Wunreachable-code -Wcast-align --param max-inline-insns-single=500 -MD -MP -MF "src/ASF/sam0/drivers/nvm/nvm.d" -MT"src/ASF/sam0/drivers/nvm/nvm.d" -MT"src/ASF/sam0/drivers/nvm/nvm.o"   -o "src/ASF/sam0/drivers/nvm/nvm.o" "../src/ASF/sam0/drivers/nvm/nvm.c" 
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\Release\Makefile(409,1): error: recipe for target 'src/ASF/sam0/drivers/nvm/nvm.o' failed
+		make: *** Waiting for unfinished jobs....
+		Building file: ../src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.c
+		Invoking: ARM/GNU C Compiler : 6.3.1
+		In file included from ../src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.c:37:0:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,4): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		    ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,26): warning: "USB_PHDC_QOS_MEDIUM_BETTER" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		                          ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(377,53): warning: "USB_PHDC_QOS_MEDIUM_BEST" is not defined [-Wundef]
+		   (USB_PHDC_QOS_LOW_GOOD|USB_PHDC_QOS_MEDIUM_BETTER|USB_PHDC_QOS_MEDIUM_BEST)
+		"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\arm\arm-gnu-toolchain\bin\arm-none-eabi-gcc.exe"  -x c -mthumb -D__SAMD21G16B__ -DNDEBUG -DBOARD=SAMD21_XPLAINED_PRO -D__SAMD21J18A__ -DEXTINT_CALLBACK_MODE=true -DUDD_ENABLE -DARM_MATH_CM0PLUS=true -DUSB_DEVICE_LPM_SUPPORT -DUSART_CALLBACK_MODE=true -DSYSTICK_MODE -DRTC_COUNT_ASYNC=true -DTC_ASYNC=false -DTCC_ASYNC=false  -I"../src" -I"../src/ASF/common/services/usb/class/hid/device" -I"../src/ASF/common/services/usb/class/hid" -I"../src/ASF/common/services/usb/udc" -I"../src/ASF/sam0/drivers/usb" -I"../src/ASF/sam0/drivers/usb/usb_sam_d_r" -I"../src/ASF/sam0/utils" -I"../src/ASF/sam0/utils/header_files" -I"../src/ASF/sam0/utils/preprocessor" -I"../src/ASF/thirdparty/CMSIS/Include" -I"../src/ASF/thirdparty/CMSIS/Lib/GCC" -I"../src/ASF/common/utils" -I"../src/ASF/sam0/utils/cmsis/samd21/include" -I"../src/ASF/sam0/utils/cmsis/samd21/source" -I"../src/ASF/sam0/drivers/system" -I"../src/ASF/sam0/drivers/system/clock/clock_samd21_r21_da_ha1" -I"../src/ASF/sam0/drivers/system/clock" -I"../src/ASF/sam0/drivers/system/interrupt" -I"../src/ASF/sam0/drivers/system/interrupt/system_interrupt_samd21" -I"../src/ASF/sam0/drivers/system/pinmux" -I"../src/ASF/sam0/drivers/system/power" -I"../src/ASF/sam0/drivers/system/power/power_sam_d_r_h" -I"../src/ASF/sam0/drivers/system/reset" -I"../src/ASF/sam0/drivers/system/reset/reset_sam_d_r_h" -I"../src/ASF/sam0/drivers/usb/stack_interface" -I"../src/ASF/sam0/drivers/extint" -I"../src/ASF/sam0/drivers/port" -I"../src/ASF/common/services/sleepmgr" -I"../src/ASF/common/services/usb" -I"../src/ASF/sam0/boards/samd21_xplained_pro" -I"../src/ASF/sam0/boards" -I"../src/ASF/common/boards" -I"../src/config" -I"../src/ASF/sam0/drivers/sercom" -I"../src/ASF/sam0/drivers/sercom/usart" -I"../src/ASF/common2/services/delay" -I"../src/ASF/common2/services/delay/sam0" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd/include" -I"../src/ASF/sam0/drivers/rtc" -I"../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h" -I"../src/ASF/common/services/usb/class/hid/device/kbd" -I"../src/ASF/sam0/drivers/nvm" -I"../src/ASF/sam0/services/eeprom/emulator/rwwee_array" -I"../src/ASF/sam0/drivers/tc" -I"../src/ASF/sam0/drivers/tc/tc_sam_d_r_h" -I"../src/ASF/sam0/drivers/tcc" -I"../src/ASF/common/services/usb/class/cdc" -I"../src/ASF/common/services/usb/class/cdc/device" -I"../src/ASF/common/services/usb/class/composite/device"  -Os -fdata-sections -ffunction-sections -mlong-calls -Wall -mcpu=cortex-m0plus -c -pipe -fno-strict-aliasing -Wall -Wstrict-prototypes -Wmissing-prototypes -Werror-implicit-function-declaration -Wpointer-arith -std=gnu99 -ffunction-sections -fdata-sections -Wchar-subscripts -Wcomment -Wformat=2 -Wimplicit-int -Wmain -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wtrigraphs -Wunused -Wuninitialized -Wunknown-pragmas -Wfloat-equal -Wundef -Wshadow -Wbad-function-cast -Wwrite-strings -Wsign-compare -Waggregate-return  -Wmissing-declarations -Wformat -Wmissing-format-attribute -Wno-deprecated-declarations -Wpacked -Wredundant-decls -Wnested-externs -Wlong-long -Wunreachable-code -Wcast-align --param max-inline-insns-single=500 -MD -MP -MF "src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.d" -MT"src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.d" -MT"src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.o"   -o "src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.o" "../src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.c" 
+		Finished building: ../src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.c
+		                                                     ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,7): info: in expansion of macro 'UDI_PHDC_QOS_IN'
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		       ^~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,23): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                       ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(396,47): warning: "USB_PHDC_QOS_LOW_GOOD" is not defined [-Wundef]
+		 #if ((UDI_PHDC_QOS_IN&USB_PHDC_QOS_LOW_GOOD)==USB_PHDC_QOS_LOW_GOOD)
+		                                               ^~~~~~~~~~~~~~~~~~~~~
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		In file included from ../src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.h:40:0,
+		                 from ../src/config/conf_usb.h:531,
+		                 from ../src/ASF/common/services/usb/class/hid/device/kbd/udi_hid_kbd.c:37:
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(491,2): warning: multi-line comment [-Wcomment]
+		  //udi_msc_desc_t udi_msc; \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(500,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_FS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(509,2): warning: multi-line comment [-Wcomment]
+		  //.udi_msc                   = UDI_MSC_DESC_HS, \
+		  ^
+C:\Users\grazy\Defcon29-mute-button\Firmware\Source\DC29\src\config\conf_usb.h(517,2): warning: multi-line comment [-Wcomment]
+		  //&udi_api_msc,            \
+		  ^
+		Building file: ../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count.c
+		Invoking: ARM/GNU C Compiler : 6.3.1
+		"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\arm\arm-gnu-toolchain\bin\arm-none-eabi-gcc.exe"  -x c -mthumb -D__SAMD21G16B__ -DNDEBUG -DBOARD=SAMD21_XPLAINED_PRO -D__SAMD21J18A__ -DEXTINT_CALLBACK_MODE=true -DUDD_ENABLE -DARM_MATH_CM0PLUS=true -DUSB_DEVICE_LPM_SUPPORT -DUSART_CALLBACK_MODE=true -DSYSTICK_MODE -DRTC_COUNT_ASYNC=true -DTC_ASYNC=false -DTCC_ASYNC=false  -I"../src" -I"../src/ASF/common/services/usb/class/hid/device" -I"../src/ASF/common/services/usb/class/hid" -I"../src/ASF/common/services/usb/udc" -I"../src/ASF/sam0/drivers/usb" -I"../src/ASF/sam0/drivers/usb/usb_sam_d_r" -I"../src/ASF/sam0/utils" -I"../src/ASF/sam0/utils/header_files" -I"../src/ASF/sam0/utils/preprocessor" -I"../src/ASF/thirdparty/CMSIS/Include" -I"../src/ASF/thirdparty/CMSIS/Lib/GCC" -I"../src/ASF/common/utils" -I"../src/ASF/sam0/utils/cmsis/samd21/include" -I"../src/ASF/sam0/utils/cmsis/samd21/source" -I"../src/ASF/sam0/drivers/system" -I"../src/ASF/sam0/drivers/system/clock/clock_samd21_r21_da_ha1" -I"../src/ASF/sam0/drivers/system/clock" -I"../src/ASF/sam0/drivers/system/interrupt" -I"../src/ASF/sam0/drivers/system/interrupt/system_interrupt_samd21" -I"../src/ASF/sam0/drivers/system/pinmux" -I"../src/ASF/sam0/drivers/system/power" -I"../src/ASF/sam0/drivers/system/power/power_sam_d_r_h" -I"../src/ASF/sam0/drivers/system/reset" -I"../src/ASF/sam0/drivers/system/reset/reset_sam_d_r_h" -I"../src/ASF/sam0/drivers/usb/stack_interface" -I"../src/ASF/sam0/drivers/extint" -I"../src/ASF/sam0/drivers/port" -I"../src/ASF/common/services/sleepmgr" -I"../src/ASF/common/services/usb" -I"../src/ASF/sam0/boards/samd21_xplained_pro" -I"../src/ASF/sam0/boards" -I"../src/ASF/common/boards" -I"../src/config" -I"../src/ASF/sam0/drivers/sercom" -I"../src/ASF/sam0/drivers/sercom/usart" -I"../src/ASF/common2/services/delay" -I"../src/ASF/common2/services/delay/sam0" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd/include" -I"../src/ASF/sam0/drivers/rtc" -I"../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h" -I"../src/ASF/common/services/usb/class/hid/device/kbd" -I"../src/ASF/sam0/drivers/nvm" -I"../src/ASF/sam0/services/eeprom/emulator/rwwee_array" -I"../src/ASF/sam0/drivers/tc" -I"../src/ASF/sam0/drivers/tc/tc_sam_d_r_h" -I"../src/ASF/sam0/drivers/tcc" -I"../src/ASF/common/services/usb/class/cdc" -I"../src/ASF/common/services/usb/class/cdc/device" -I"../src/ASF/common/services/usb/class/composite/device"  -Os -fdata-sections -ffunction-sections -mlong-calls -Wall -mcpu=cortex-m0plus -c -pipe -fno-strict-aliasing -Wall -Wstrict-prototypes -Wmissing-prototypes -Werror-implicit-function-declaration -Wpointer-arith -std=gnu99 -ffunction-sections -fdata-sections -Wchar-subscripts -Wcomment -Wformat=2 -Wimplicit-int -Wmain -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wtrigraphs -Wunused -Wuninitialized -Wunknown-pragmas -Wfloat-equal -Wundef -Wshadow -Wbad-function-cast -Wwrite-strings -Wsign-compare -Waggregate-return  -Wmissing-declarations -Wformat -Wmissing-format-attribute -Wno-deprecated-declarations -Wpacked -Wredundant-decls -Wnested-externs -Wlong-long -Wunreachable-code -Wcast-align --param max-inline-insns-single=500 -MD -MP -MF "src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count.d" -MT"src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count.d" -MT"src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count.o"   -o "src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count.o" "../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count.c" 
+		Finished building: ../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count.c
+		Building file: ../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count_interrupt.c
+		Invoking: ARM/GNU C Compiler : 6.3.1
+		"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\arm\arm-gnu-toolchain\bin\arm-none-eabi-gcc.exe"  -x c -mthumb -D__SAMD21G16B__ -DNDEBUG -DBOARD=SAMD21_XPLAINED_PRO -D__SAMD21J18A__ -DEXTINT_CALLBACK_MODE=true -DUDD_ENABLE -DARM_MATH_CM0PLUS=true -DUSB_DEVICE_LPM_SUPPORT -DUSART_CALLBACK_MODE=true -DSYSTICK_MODE -DRTC_COUNT_ASYNC=true -DTC_ASYNC=false -DTCC_ASYNC=false  -I"../src" -I"../src/ASF/common/services/usb/class/hid/device" -I"../src/ASF/common/services/usb/class/hid" -I"../src/ASF/common/services/usb/udc" -I"../src/ASF/sam0/drivers/usb" -I"../src/ASF/sam0/drivers/usb/usb_sam_d_r" -I"../src/ASF/sam0/utils" -I"../src/ASF/sam0/utils/header_files" -I"../src/ASF/sam0/utils/preprocessor" -I"../src/ASF/thirdparty/CMSIS/Include" -I"../src/ASF/thirdparty/CMSIS/Lib/GCC" -I"../src/ASF/common/utils" -I"../src/ASF/sam0/utils/cmsis/samd21/include" -I"../src/ASF/sam0/utils/cmsis/samd21/source" -I"../src/ASF/sam0/drivers/system" -I"../src/ASF/sam0/drivers/system/clock/clock_samd21_r21_da_ha1" -I"../src/ASF/sam0/drivers/system/clock" -I"../src/ASF/sam0/drivers/system/interrupt" -I"../src/ASF/sam0/drivers/system/interrupt/system_interrupt_samd21" -I"../src/ASF/sam0/drivers/system/pinmux" -I"../src/ASF/sam0/drivers/system/power" -I"../src/ASF/sam0/drivers/system/power/power_sam_d_r_h" -I"../src/ASF/sam0/drivers/system/reset" -I"../src/ASF/sam0/drivers/system/reset/reset_sam_d_r_h" -I"../src/ASF/sam0/drivers/usb/stack_interface" -I"../src/ASF/sam0/drivers/extint" -I"../src/ASF/sam0/drivers/port" -I"../src/ASF/common/services/sleepmgr" -I"../src/ASF/common/services/usb" -I"../src/ASF/sam0/boards/samd21_xplained_pro" -I"../src/ASF/sam0/boards" -I"../src/ASF/common/boards" -I"../src/config" -I"../src/ASF/sam0/drivers/sercom" -I"../src/ASF/sam0/drivers/sercom/usart" -I"../src/ASF/common2/services/delay" -I"../src/ASF/common2/services/delay/sam0" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd" -I"../src/ASF/thirdparty/qtouch/devspecific/sam0/samd/include" -I"../src/ASF/sam0/drivers/rtc" -I"../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h" -I"../src/ASF/common/services/usb/class/hid/device/kbd" -I"../src/ASF/sam0/drivers/nvm" -I"../src/ASF/sam0/services/eeprom/emulator/rwwee_array" -I"../src/ASF/sam0/drivers/tc" -I"../src/ASF/sam0/drivers/tc/tc_sam_d_r_h" -I"../src/ASF/sam0/drivers/tcc" -I"../src/ASF/common/services/usb/class/cdc" -I"../src/ASF/common/services/usb/class/cdc/device" -I"../src/ASF/common/services/usb/class/composite/device"  -Os -fdata-sections -ffunction-sections -mlong-calls -Wall -mcpu=cortex-m0plus -c -pipe -fno-strict-aliasing -Wall -Wstrict-prototypes -Wmissing-prototypes -Werror-implicit-function-declaration -Wpointer-arith -std=gnu99 -ffunction-sections -fdata-sections -Wchar-subscripts -Wcomment -Wformat=2 -Wimplicit-int -Wmain -Wparentheses -Wsequence-point -Wreturn-type -Wswitch -Wtrigraphs -Wunused -Wuninitialized -Wunknown-pragmas -Wfloat-equal -Wundef -Wshadow -Wbad-function-cast -Wwrite-strings -Wsign-compare -Waggregate-return  -Wmissing-declarations -Wformat -Wmissing-format-attribute -Wno-deprecated-declarations -Wpacked -Wredundant-decls -Wnested-externs -Wlong-long -Wunreachable-code -Wcast-align --param max-inline-insns-single=500 -MD -MP -MF "src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count_interrupt.d" -MT"src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count_interrupt.d" -MT"src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count_interrupt.o"   -o "src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count_interrupt.o" "../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count_interrupt.c" 
+		Finished building: ../src/ASF/sam0/drivers/rtc/rtc_sam_d_r_h/rtc_count_interrupt.c
+	Done executing task "RunCompilerTask" -- FAILED.
+Done building target "CoreBuild" in project "DC29.cproj" -- FAILED.
+Done building project "DC29.cproj" -- FAILED.
+
+Build FAILED.
+========== Build: 0 succeeded or up-to-date, 1 failed, 0 skipped ==========
