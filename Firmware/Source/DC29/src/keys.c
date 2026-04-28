@@ -6,6 +6,7 @@
 
 #include "keys.h"
 #include "udi_hid_kbd.h"
+#include "pwm.h"
 
 extern uint8_t keymap[231];
 extern uint8_t keymaplength;
@@ -16,6 +17,8 @@ extern bool wait_for_sof;
 extern volatile uint32_t millis;
 
 extern bool udi_hid_kbd_b_report_trans_ongoing;
+
+extern uint8_t ledvalues[12];
 
 uint32_t lastUSBSendTime = 0;
 
@@ -47,6 +50,16 @@ void get_keymap(void){
 }
 
 void send_keys(uint8_t key){
+	uint8_t saved_led[3] = {0, 0, 0};
+	bool flash_led = (key >= 1 && key <= 4);
+	if(flash_led){
+		uint8_t idx = (key - 1) * 3;
+		saved_led[0] = ledvalues[idx];
+		saved_led[1] = ledvalues[idx + 1];
+		saved_led[2] = ledvalues[idx + 2];
+		uint8_t white[3] = {255, 255, 255};
+		led_set_color(key, white);
+	}
 	if(key < 6){
 		for(int x=keymapstarts[key-1]+1; x<keymapstarts[key]; x+=2){
 			if(keymap[x] == 240){ //Media key
@@ -113,5 +126,8 @@ void send_keys(uint8_t key){
 				}
 			}
 		}
+	}
+	if(flash_led){
+		led_set_color(key, saved_led);
 	}
 }

@@ -18,6 +18,13 @@ static uint8_t newKeystroke[230];
 static int newKeystrokeCounter;
 static uint8_t newKeymap[230];
 
+/* Host-driven status indicator on LED 4. Byte 0x01 is the escape prefix;
+   the next byte is M (muted -> red), U (unmuted -> green), or X (clear -> off).
+   0x01 is never produced by macro entry or menu navigation, so it can't
+   collide with normal serial-console traffic. */
+#define STATUS_ESCAPE 0x01
+static bool awaiting_status_cmd = false;
+
 extern uint8_t led1color[3];
 extern uint8_t led2color[3];
 extern uint8_t led3color[3];
@@ -49,6 +56,23 @@ void updateSerialConsole(void){
 	if(main_b_cdc_enable){
 		if(udi_cdc_get_nb_received_data()){
 			int data = udi_cdc_getc();
+			/* Status-indicator escape: 0x01 followed by M/U/X drives LED 4.
+			   Doesn't echo, doesn't progress menu state. */
+			if(awaiting_status_cmd){
+				awaiting_status_cmd = false;
+				if(data == 'M'){
+					led_set_color(4, LED_COLOR_RED);
+				} else if(data == 'U'){
+					led_set_color(4, LED_COLOR_GREEN);
+				} else if(data == 'X'){
+					led_set_color(4, LED_COLOR_OFF);
+				}
+				return;
+			}
+			if(data == STATUS_ESCAPE){
+				awaiting_status_cmd = true;
+				return;
+			}
 			switch (serialConsoleState){
 				case 0: //not started
 					//print out splash screen and starting info
@@ -705,6 +729,104 @@ void updateSerialConsole(void){
 									newKeymapCounter ++;
 									pending_modifier = 0;
 									x += 3;
+								} else if(newKeystroke[x] == 'u' && newKeystroke[x+1] == 'p' && newKeystroke[x+2] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 82;//Up
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 2;
+								} else if(newKeystroke[x] == 'd' && newKeystroke[x+1] == 'o' && newKeystroke[x+2] == 'w' && newKeystroke[x+3] == 'n' && newKeystroke[x+4] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 81;//Down
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 4;
+								} else if(newKeystroke[x] == 'l' && newKeystroke[x+1] == 'e' && newKeystroke[x+2] == 'f' && newKeystroke[x+3] == 't' && newKeystroke[x+4] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 80;//Left
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 4;
+								} else if(newKeystroke[x] == 'r' && newKeystroke[x+1] == 'i' && newKeystroke[x+2] == 'g' && newKeystroke[x+3] == 'h' && newKeystroke[x+4] == 't' && newKeystroke[x+5] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 79;//Right
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 5;
+								} else if(newKeystroke[x] == 'e' && newKeystroke[x+1] == 'n' && newKeystroke[x+2] == 't' && newKeystroke[x+3] == 'e' && newKeystroke[x+4] == 'r' && newKeystroke[x+5] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 40;//Enter
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 5;
+								} else if(newKeystroke[x] == 'e' && newKeystroke[x+1] == 's' && newKeystroke[x+2] == 'c' && newKeystroke[x+3] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 41;//Esc
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 3;
+								} else if(newKeystroke[x] == 't' && newKeystroke[x+1] == 'a' && newKeystroke[x+2] == 'b' && newKeystroke[x+3] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 43;//Tab
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 3;
+								} else if(newKeystroke[x] == 'h' && newKeystroke[x+1] == 'o' && newKeystroke[x+2] == 'm' && newKeystroke[x+3] == 'e' && newKeystroke[x+4] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 74;//Home
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 4;
+								} else if(newKeystroke[x] == 'e' && newKeystroke[x+1] == 'n' && newKeystroke[x+2] == 'd' && newKeystroke[x+3] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 77;//End
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 3;
+								} else if(newKeystroke[x] == 'p' && newKeystroke[x+1] == 'g' && newKeystroke[x+2] == 'u' && newKeystroke[x+3] == 'p' && newKeystroke[x+4] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 75;//PgUp
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 4;
+								} else if(newKeystroke[x] == 'p' && newKeystroke[x+1] == 'g' && newKeystroke[x+2] == 'd' && newKeystroke[x+3] == 'n' && newKeystroke[x+4] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 78;//PgDn
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 4;
+								} else if(newKeystroke[x] == 'i' && newKeystroke[x+1] == 'n' && newKeystroke[x+2] == 's' && newKeystroke[x+3] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 73;//Ins
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 3;
+								} else if(newKeystroke[x] == 'd' && newKeystroke[x+1] == 'e' && newKeystroke[x+2] == 'l' && newKeystroke[x+3] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 76;//Del
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 3;
+								} else if(newKeystroke[x] == 'b' && newKeystroke[x+1] == 'k' && newKeystroke[x+2] == 's' && newKeystroke[x+3] == 'p' && newKeystroke[x+4] == ']'){
+									newKeymap[newKeymapCounter] = pending_modifier;
+									newKeymapCounter ++;
+									newKeymap[newKeymapCounter] = 42;//Bksp
+									newKeymapCounter ++;
+									pending_modifier = 0;
+									x += 4;
 								} else if(newKeystroke[x] == 'n' && newKeystroke[x+1] == 'o' && newKeystroke[x+2] == 'n' && newKeystroke[x+3] == 'e' && newKeystroke[x+4] == ']'){
 									newKeymap[newKeymapCounter] = pending_modifier;
 									newKeymapCounter ++;
