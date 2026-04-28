@@ -1399,121 +1399,6 @@ void showSplashScreen(void){
 		udi_cdc_putc(13);//CR
 		udi_cdc_putc(10);//LF
 	}
-	udi_cdc_write_buf(WEBSITE,sizeof(WEBSITE));
-	udi_cdc_putc(13);//CR
-	udi_cdc_putc(10);//LF
-	udi_cdc_putc(13);//CR
-	udi_cdc_putc(10);//LF
-	udi_cdc_write_buf(CHALLENGE_STATUS,sizeof(CHALLENGE_STATUS));
-	udi_cdc_putc(13);//CR
-	udi_cdc_putc(10);//LF
-	udi_cdc_write_buf(CHALLENGE_BADGES_CONNECTED,sizeof(CHALLENGE_BADGES_CONNECTED));
-	itoa(challengedata.numconnected,bytes,10);
-	for(x=0; x<sizeof(bytes); x++){
-		if(bytes[x] == 0) break;
-	}
-	udi_cdc_write_buf(bytes,x);
-	udi_cdc_putc(13);//CR
-	udi_cdc_putc(10);//LF
-	udi_cdc_write_buf(CHALLENGE_BADGE_TYPES,sizeof(CHALLENGE_BADGE_TYPES));
-	if(challengedata.badgetypes & 1) udi_cdc_write_buf("Human,",6);
-	if(challengedata.badgetypes & 2) udi_cdc_write_buf("Goon,",6);
-	if(challengedata.badgetypes & 4) udi_cdc_write_buf("Creator,",8);
-	if(challengedata.badgetypes & 8) udi_cdc_write_buf("Speaker,",8);
-	if(challengedata.badgetypes & 16) udi_cdc_write_buf("Artist,",7);
-	if(challengedata.badgetypes & 32) udi_cdc_write_buf("Vendor,",7);
-	if(challengedata.badgetypes & 64) udi_cdc_write_buf("Press",6);
-	udi_cdc_putc(13);//CR
-	udi_cdc_putc(10);//LF
-	
-	if(challengedata.badgetypes >= 127){ //Have we collected all the badge types?
-		udi_cdc_write_buf(CHALLENGE5,sizeof(CHALLENGE5));
-		udi_cdc_putc(13);//CR
-		udi_cdc_putc(10);//LF
-		udi_cdc_write_buf(WEBSITE,sizeof(WEBSITE));
-		decrypt(WEBSITE_COLLECTED_SIGNAL,sizeof(WEBSITE_COLLECTED_SIGNAL));
-		udi_cdc_putc(13);//CR
-		udi_cdc_putc(10);//LF
-		
-		udi_cdc_write_buf(CHALLENGE_SIGNAL_SHARES,sizeof(CHALLENGE_SIGNAL_SHARES));
-		itoa(challengedata.numshared,bytes,10);
-		for(x=0; x<sizeof(bytes); x++){
-			if(bytes[x] == 0) break;
-		}
-		udi_cdc_write_buf(bytes,x);
-		udi_cdc_putc(13);//CR
-		udi_cdc_putc(10);//LF
-		if(challengedata.numshared >= 20){ //Have we shared the signal at least 20 times?
-			udi_cdc_write_buf(CHALLENGE6,sizeof(CHALLENGE6));
-			udi_cdc_putc(13);//CR
-			udi_cdc_putc(10);//LF
-			udi_cdc_write_buf(WEBSITE,sizeof(WEBSITE));
-			decrypt(WEBSITE_SHARED_SIGNAL,sizeof(WEBSITE_SHARED_SIGNAL));
-			if(port_pin_get_input_level(MATRIX) == true){ //Matrix has been disconnected!
-				udi_cdc_putc(13);//CR
-				udi_cdc_putc(10);//LF
-				udi_cdc_write_buf(WEBSITE,sizeof(WEBSITE));
-				decrypt(WEBSITE_MATRIX,sizeof(WEBSITE_MATRIX));
-				if(port_pin_get_input_level(MAX) == false){ //Max has been reconnected!
-					udi_cdc_putc(13);//CR
-					udi_cdc_putc(10);//LF
-					decrypt(WEBSITE_MAX,sizeof(WEBSITE_MAX));
-					if(port_pin_get_input_level(ALIENS) == false){ //Aliens have made a connection!
-						udi_cdc_putc(13);//CR
-						udi_cdc_putc(10);//LF
-						decrypt(WEBSITE_ALIENS,sizeof(WEBSITE_ALIENS));
-					}
-				}
-			}
-			udi_cdc_putc(13);//CR
-			udi_cdc_putc(10);//LF
-		}
-	}
-	
-	//Game Stats
-	if(gamedata.simon_solo_high_score > 0 || gamedata.simon_multi_high_score > 0){
-		udi_cdc_putc(13);//CR
-		udi_cdc_putc(10);//LF
-		udi_cdc_write_buf(GAME,sizeof(GAME));
-		udi_cdc_putc(13);//CR
-		udi_cdc_putc(10);//LF
-		if(gamedata.simon_solo_high_score > 0){
-			udi_cdc_write_buf(GAME1,sizeof(GAME1));
-			itoa(gamedata.simon_solo_high_score,bytes,10);
-			for(x=0; x<sizeof(bytes); x++){
-				if(bytes[x] == 0) break;
-			}
-			udi_cdc_write_buf(bytes,x);
-			udi_cdc_putc(13);//CR
-			udi_cdc_putc(10);//LF
-		}
-		if(gamedata.simon_multi_high_score > 0){
-			udi_cdc_write_buf(GAME2,sizeof(GAME2));
-			itoa(gamedata.simon_multi_high_score,bytes,10);
-			for(x=0; x<sizeof(bytes); x++){
-				if(bytes[x] == 0) break;
-			}
-			udi_cdc_write_buf(bytes,x);
-			udi_cdc_putc(13);//CR
-			udi_cdc_putc(10);//LF
-			udi_cdc_write_buf(GAME3,sizeof(GAME3));
-			itoa(gamedata.simon_multi_games_played,bytes,10);
-			for(x=0; x<sizeof(bytes); x++){
-				if(bytes[x] == 0) break;
-			}
-			udi_cdc_write_buf(bytes,x);
-			udi_cdc_putc(13);//CR
-			udi_cdc_putc(10);//LF
-			udi_cdc_write_buf(GAME4,sizeof(GAME4));
-			itoa(gamedata.simon_multi_connections,bytes,10);
-			for(x=0; x<sizeof(bytes); x++){
-				if(bytes[x] == 0) break;
-			}
-			udi_cdc_write_buf(bytes,x);
-			udi_cdc_putc(13);//CR
-			udi_cdc_putc(10);//LF
-		}
-	}
 
 #if DEBUG > 0
 	udi_cdc_write_buf("serial numbers: ", 16);
@@ -1665,12 +1550,6 @@ void showSplashScreen(void){
 	udi_cdc_putc(13);//CR
 	udi_cdc_putc(10);//LF
 	udi_cdc_write_buf(OPTION3,sizeof(OPTION3));
-	udi_cdc_putc(13);//CR
-	udi_cdc_putc(10);//LF
-	udi_cdc_write_buf(OPTION4,sizeof(OPTION4));
-	udi_cdc_putc(13);//CR
-	udi_cdc_putc(10);//LF
-	udi_cdc_write_buf(OPTION5,sizeof(OPTION5));
 	udi_cdc_putc(13);//CR
 	udi_cdc_putc(10);//LF
 #if DEBUG > 0
