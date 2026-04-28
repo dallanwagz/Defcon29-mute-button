@@ -481,56 +481,56 @@ void updateSerialConsole(void){
 								} else if(newKeystroke[x] == 'g' && newKeystroke[x+1] == 'u' && newKeystroke[x+2] == 'i' && newKeystroke[x+3] == ']'){
 									pending_modifier |= HID_MODIFIER_LEFT_UI;
 									x += 3;
-								} else if(newKeystroke[x] == 'p' && newKeystroke[x+1] == 'l' && newKeystroke[x+2] == 'a' && newKeystroke[x+3] == 'y' && newKeystroke[x+4] == ']' && newKeystroke[x+5] != '['){
+								} else if(newKeystroke[x] == 'p' && newKeystroke[x+1] == 'l' && newKeystroke[x+2] == 'a' && newKeystroke[x+3] == 'y' && newKeystroke[x+4] == ']'){
 									newKeymap[newKeymapCounter] = 240;//media key identifier
 									newKeymapCounter ++;
 									newKeymap[newKeymapCounter] = HID_MEDIA_PLAY;
 									newKeymapCounter ++;
 									pending_modifier = 0;
 									x += 4;
-								} else if(newKeystroke[x] == 'n' && newKeystroke[x+1] == 'e' && newKeystroke[x+2] == 'x' && newKeystroke[x+3] == 't' && newKeystroke[x+4] == ']' && newKeystroke[x+5] != '['){
+								} else if(newKeystroke[x] == 'n' && newKeystroke[x+1] == 'e' && newKeystroke[x+2] == 'x' && newKeystroke[x+3] == 't' && newKeystroke[x+4] == ']'){
 									newKeymap[newKeymapCounter] = 240;//media key identifier
 									newKeymapCounter ++;
 									newKeymap[newKeymapCounter] = HID_MEDIA_NEXT;
 									newKeymapCounter ++;
 									pending_modifier = 0;
 									x += 4;
-								} else if(newKeystroke[x] == 'b' && newKeystroke[x+1] == 'a' && newKeystroke[x+2] == 'c' && newKeystroke[x+3] == 'k' && newKeystroke[x+4] == ']' && newKeystroke[x+5] != '['){
+								} else if(newKeystroke[x] == 'b' && newKeystroke[x+1] == 'a' && newKeystroke[x+2] == 'c' && newKeystroke[x+3] == 'k' && newKeystroke[x+4] == ']'){
 									newKeymap[newKeymapCounter] = 240;//media key identifier
 									newKeymapCounter ++;
 									newKeymap[newKeymapCounter] = HID_MEDIA_BACK;
 									newKeymapCounter ++;
 									pending_modifier = 0;
 									x += 4;
-								} else if(newKeystroke[x] == 's' && newKeystroke[x+1] == 't' && newKeystroke[x+2] == 'o' && newKeystroke[x+3] == 'p' && newKeystroke[x+4] == ']' && newKeystroke[x+5] != '['){
+								} else if(newKeystroke[x] == 's' && newKeystroke[x+1] == 't' && newKeystroke[x+2] == 'o' && newKeystroke[x+3] == 'p' && newKeystroke[x+4] == ']'){
 									newKeymap[newKeymapCounter] = 240;//media key identifier
 									newKeymapCounter ++;
 									newKeymap[newKeymapCounter] = HID_MEDIA_STOP;
 									newKeymapCounter ++;
 									pending_modifier = 0;
 									x += 4;
-								} else if(newKeystroke[x] == 'e' && newKeystroke[x+1] == 'j' && newKeystroke[x+2] == 'e' && newKeystroke[x+3] == 'c' && newKeystroke[x+4] == 't' && newKeystroke[x+5] != ']' && newKeystroke[x+6] != '['){
+								} else if(newKeystroke[x] == 'e' && newKeystroke[x+1] == 'j' && newKeystroke[x+2] == 'e' && newKeystroke[x+3] == 'c' && newKeystroke[x+4] == 't' && newKeystroke[x+5] == ']'){
 									newKeymap[newKeymapCounter] = 240;//media key identifier
 									newKeymapCounter ++;
 									newKeymap[newKeymapCounter] = HID_MEDIA_EJECT;
 									newKeymapCounter ++;
 									pending_modifier = 0;
 									x += 5;
-								} else if(newKeystroke[x] == 'm' && newKeystroke[x+1] == 'u' && newKeystroke[x+2] == 't' && newKeystroke[x+3] == 'e' && newKeystroke[x+4] == ']' && newKeystroke[x+5] != '['){
+								} else if(newKeystroke[x] == 'm' && newKeystroke[x+1] == 'u' && newKeystroke[x+2] == 't' && newKeystroke[x+3] == 'e' && newKeystroke[x+4] == ']'){
 									newKeymap[newKeymapCounter] = 240;//media key identifier
 									newKeymapCounter ++;
 									newKeymap[newKeymapCounter] = HID_MEDIA_MUTE;
 									newKeymapCounter ++;
 									pending_modifier = 0;
 									x += 4;
-								} else if(newKeystroke[x] == 'v' && newKeystroke[x+1] == 'o' && newKeystroke[x+2] == 'l' && newKeystroke[x+3] == '+' && newKeystroke[x+4] == ']' && newKeystroke[x+5] != '['){
+								} else if(newKeystroke[x] == 'v' && newKeystroke[x+1] == 'o' && newKeystroke[x+2] == 'l' && newKeystroke[x+3] == '+' && newKeystroke[x+4] == ']'){
 									newKeymap[newKeymapCounter] = 240;//media key identifier
 									newKeymapCounter ++;
 									newKeymap[newKeymapCounter] = HID_MEDIA_VOL_PLUS;
 									newKeymapCounter ++;
 									pending_modifier = 0;
 									x += 4;
-								} else if(newKeystroke[x] == 'v' && newKeystroke[x+1] == 'o' && newKeystroke[x+2] == 'l' && newKeystroke[x+3] == '-' && newKeystroke[x+4] == ']' && newKeystroke[x+5] != '['){
+								} else if(newKeystroke[x] == 'v' && newKeystroke[x+1] == 'o' && newKeystroke[x+2] == 'l' && newKeystroke[x+3] == '-' && newKeystroke[x+4] == ']'){
 									newKeymap[newKeymapCounter] = 240;//media key identifier
 									newKeymapCounter ++;
 									newKeymap[newKeymapCounter] = HID_MEDIA_VOL_MINUS;
