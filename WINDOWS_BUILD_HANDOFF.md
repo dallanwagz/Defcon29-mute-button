@@ -29,11 +29,10 @@ The full bidirectional escape protocol is now:
 
 ## Active debugging problem
 
-Button 4 is configured in EEPROM to send `[ctrl][alt]y` (modifier `0x05`, keycode `0x1C`).
-The Mac-side Python service listens for `Ctrl+Alt+Y` globally and calls the Teams WebSocket
-`toggle-mute` action. However it's not yet confirmed whether the badge is actually sending
-the right bytes — that's what the new firmware will reveal. After flashing, the service log
-will show `Badge button 4 pressed → modifier=0x05 keycode=0x1C` on each press if correct.
+Button 4 is configured in EEPROM to send `[ctrl][alt]m` (modifier `0x05`, keycode `0x10`).
+The Mac-side Python service listens for `Ctrl+Alt+M` globally and calls the Teams WebSocket
+`toggle-mute` action. After flashing, the service log
+will show `Badge button 4 pressed → modifier=0x05 keycode=0x10` on each press if correct.
 
 ## Build steps (Microchip Studio 7.0, Windows)
 
@@ -64,27 +63,23 @@ tail -f /tmp/dc29-teams-mute.err
 
 Expected on startup:
 ```
-Badge button 4 keymap: modifier=0x05 keycode=0x1C
+Badge button 4 keymap: modifier=0x05 keycode=0x10
 ```
 
 Expected each time button 4 is pressed:
 ```
-Badge button 4 pressed → modifier=0x05 keycode=0x1C
+Badge button 4 pressed → modifier=0x05 keycode=0x10
 ```
 
-If modifier or keycode is wrong, the keymap can now be set programmatically from Python
-without touching the serial menu — no firmware change needed:
-
-```python
-badge.set_keymap(4, 0x05, 0x1C)   # ctrl+alt+y
-```
+If modifier or keycode is wrong, use the badge serial console menu (option 2 → button 4)
+and type `[ctrl][alt]m` to restore the correct keymap.
 
 ## Mac service config (already deployed)
 
 - Plist: `~/Library/LaunchAgents/com.local.dc29-teams-mute.plist`
 - Python: `/Users/dallan/repo/Defcon29-mute-button/.venv/bin/python3`
 - Port: `/dev/tty.usbmodem123451`
-- Toggle hotkey: `<ctrl>+<alt>+y`
+- Toggle hotkey: `<ctrl>+<alt>+m`
 
 To reload after reflash:
 ```
