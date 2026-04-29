@@ -151,7 +151,8 @@ class BadgeWriter:
         self._rx_args: list[int] = []
         self._rx_args_needed = 0
         self.on_button4_press: "Callable[[], None] | None" = None
-        self.on_effects_toggle: "Callable[[int], None] | None" = None
+        self.on_effect_mode: "Callable[[int], None] | None" = None   # arg = new mode (0/1/2)
+        self.on_chord_long: "Callable[[], None] | None" = None
 
     def _ensure_open(self) -> None:
         if self._serial is None or not self._serial.is_open:
@@ -198,6 +199,9 @@ class BadgeWriter:
             elif b == ord('V'):
                 self._rx_args_needed = 1
                 self._rx_state = 2
+            elif b == ord('C'):
+                self._rx_args_needed = 1
+                self._rx_state = 2
             else:
                 self._rx_state = 0
         elif self._rx_state == 2:
@@ -220,10 +224,16 @@ class BadgeWriter:
         elif cmd == 'A' and len(args) == 1:
             logging.info("Badge ACK: keymap set for button %d", args[0])
         elif cmd == 'V' and len(args) == 1:
-            state = args[0]
-            logging.info("Badge effects toggle: %s", "on" if state else "off")
-            if self.on_effects_toggle is not None:
-                self.on_effects_toggle(state)
+            mode = args[0]
+            labels = {0: "off", 1: "rainbow-chase", 2: "breathe"}
+            logging.info("Badge effect mode: %d (%s)", mode, labels.get(mode, "unknown"))
+            if self.on_effect_mode is not None:
+                self.on_effect_mode(mode)
+        elif cmd == 'C' and len(args) == 1:
+            chord_type = args[0]
+            logging.info("Badge chord: %s", "long" if chord_type == 2 else "short")
+            if chord_type == 2 and self.on_chord_long is not None:
+                self.on_chord_long()
 
     def _close(self) -> None:
         try:
@@ -483,7 +493,12 @@ async def run_once(
     while not toggle_queue.empty():
         toggle_queue.get_nowait()
 
-    _effects = effects_enabled if effects_enabled is not None else [True]
+    # _effects[0]: True if Python is currently authorized to run idle animations.
+    # Starts from the `effects` param (CLI flag). Gets suppressed when firmware
+    # effect mode > 0 and restored when mode returns to 0 — but only if the user
+    # originally enabled effects via CLI.
+    _effects_authorized = effects_enabled if effects_enabled is not None else [True]
+    _effects = [_effects_authorized[0]]
 
     def _start_idle() -> None:
         if not animator or not _effects[0]:
@@ -497,12 +512,13 @@ async def run_once(
         if effects_queue is None:
             return
         while True:
-            state = await effects_queue.get()
-            _effects[0] = bool(state)
-            if not _effects[0]:
+            fw_idle = await effects_queue.get()  # 1=firmware idle, 0=firmware animating
+            if not fw_idle:
+                _effects[0] = False
                 if animator:
                     animator.stop()
             else:
+                _effects[0] = _effects_authorized[0]
                 if not tracker.is_in_meeting:
                     _start_idle()
 
@@ -581,12 +597,17 @@ async def supervise(
 
     toggle_queue: asyncio.Queue = asyncio.Queue()
     effects_queue: asyncio.Queue = asyncio.Queue()
-    effects_enabled = [effects]
+    effects_enabled = [effects]   # Python idle-animation authorization
     tracker = _MeetingTracker()
 
     loop = asyncio.get_running_loop()
     badge.on_button4_press = lambda: loop.call_soon_threadsafe(toggle_queue.put_nowait, True)
-    badge.on_effects_toggle = lambda state: loop.call_soon_threadsafe(effects_queue.put_nowait, state)
+    # mode > 0: firmware is animating → stop Python idle anim
+    # mode == 0: firmware idle → restore Python idle anim if configured
+    badge.on_effect_mode = lambda mode: loop.call_soon_threadsafe(
+        effects_queue.put_nowait, 0 if mode > 0 else 1
+    )
+    badge.on_chord_long = lambda: logging.info("Long chord received — badge effects reset")
 
     hotkey_listener = None
     if toggle_hotkey:

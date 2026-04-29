@@ -157,6 +157,10 @@ void configure_rtc_callbacks(void);
  */
 void configure_rtc_count(void);
 
+#define NUM_EFFECT_MODES 3   /* 0=off, 1=rainbow-chase, 2=breathe */
+
+void set_effect_mode(uint8_t mode);
+
 void vbus_handler(void);
 
 void button1_handler(void);

@@ -99,8 +99,12 @@ volatile bool button2 = false;
 volatile bool button3 = false;
 volatile bool button4 = false;
 
-#define DEBOUNCE_TIME 200
-#define LONG_PRESS_TIME 800
+#define DEBOUNCE_TIME          200
+#define CHORD_SHORT_MS         300   /* min hold (ms) to register a short chord */
+#define CHORD_LONG_MS         2000   /* hold (ms) to fire a long chord */
+#define EFFECT_CHASE_STEP_MS   150   /* ms per step for rainbow-chase mode */
+#define EFFECT_BREATHE_STEP_MS   8   /* ms per step for breathe mode */
+#define NUM_EFFECT_MODES         3   /* 0=off, 1=rainbow-chase, 2=breathe */
 volatile uint32_t lastButton1Press = 0;
 volatile uint32_t lastButton2Press = 0;
 volatile uint32_t lastButton3Press = 0;
@@ -115,9 +119,13 @@ uint8_t fwversion[1];
 extern struct tcc_module tcc2_instance;
 
 bool button_flash_enabled = true;
-bool effects_enabled = true;
-volatile bool button1_held = false;
-volatile uint32_t button1_held_start = 0;
+uint8_t effect_mode = 0;
+typedef enum { CHORD_IDLE, CHORD_PENDING, CHORD_LONG_FIRED } ChordState;
+static ChordState chord_state = CHORD_IDLE;
+static uint32_t   chord_start = 0;
+static uint8_t    effect_step = 0;
+static uint8_t    effect_hue  = 0;
+static uint32_t   effect_timer = 0;
 volatile uint32_t last_usb_comms = 0;
 
 /* Macros */
@@ -287,12 +295,12 @@ int main(void)
 	extint_register_callback(vbus_handler, 1, EXTINT_CALLBACK_TYPE_DETECT);
 	extint_chan_enable_callback(1,EXTINT_CALLBACK_TYPE_DETECT);
 
-	//Button 1 interrupt (DETECT_BOTH to support long-press effects toggle)
+	//Button 1 interrupt
 	config_extint_chan.gpio_pin            = PIN_PA04A_EIC_EXTINT4;
 	config_extint_chan.gpio_pin_mux        = PINMUX_PA04A_EIC_EXTINT4;
 	config_extint_chan.gpio_pin_pull       = EXTINT_PULL_UP;
 	config_extint_chan.filter_input_signal = true;
-	config_extint_chan.detection_criteria  = EXTINT_DETECT_BOTH;
+	config_extint_chan.detection_criteria  = EXTINT_DETECT_FALLING;
 	extint_chan_set_config(4, &config_extint_chan);
 	extint_register_callback(button1_handler, 4, EXTINT_CALLBACK_TYPE_DETECT);
 	extint_chan_enable_callback(4,EXTINT_CALLBACK_TYPE_DETECT);
@@ -403,68 +411,84 @@ int main(void)
 
 	
 	while(1){
-		//Check Buttons
-		if(USBPower && ((millis - last_usb_comms) < 100)){ //Only send keys when connected to a computer
-			if(button1){
-				button1 = false;
-				send_keys(1);
-			}
-			if(button2){
-				button2 = false;
-				send_keys(2);
-			}
-			if(button3){
-				button3 = false;
-				send_keys(3);
-			}
-			if(button4){
-				button4 = false;
-				send_keys(4);
-			}
+		/* --- 4-button chord detection (works standalone, no USB required) ---
+		   Short chord (all 4 held CHORD_SHORT_MS..CHORD_LONG_MS, released):
+		     cycles effect mode, sends 0x01 V n and 0x01 C 1.
+		   Long chord (all 4 held >= CHORD_LONG_MS):
+		     fires immediately, resets to mode 0, sends 0x01 V 0 and 0x01 C 2.
+		   While any chord is pending, individual button flags are cleared so no
+		   HID keystrokes fire. */
+		bool all4 = !port_pin_get_input_level(BUTTON1) &&
+		            !port_pin_get_input_level(BUTTON2) &&
+		            !port_pin_get_input_level(BUTTON3) &&
+		            !port_pin_get_input_level(BUTTON4);
 
-			// Long-press button 1 (>800ms): toggle effects, notify Python
-			if(button1_held && (millis - button1_held_start) >= LONG_PRESS_TIME){
-				button1_held = false;
-				effects_enabled = !effects_enabled;
-				uint8_t evt[3] = {0x01, 'V', effects_enabled ? 1 : 0};
-				udi_cdc_write_buf(evt, 3);
+		if(all4){
+			button1 = button2 = button3 = button4 = false;
+			if(chord_state == CHORD_IDLE){
+				chord_state = CHORD_PENDING;
+				chord_start = millis;
+			} else if(chord_state == CHORD_PENDING){
+				if((millis - chord_start) >= CHORD_LONG_MS){
+					chord_state = CHORD_LONG_FIRED;
+					set_effect_mode(0);
+					if(main_b_cdc_enable){
+						uint8_t evt[3] = {0x01, 'C', 2};
+						udi_cdc_write_buf(evt, 3);
+					}
+				}
 			}
+		} else {
+			if(chord_state == CHORD_PENDING){
+				uint32_t held = millis - chord_start;
+				if(held >= CHORD_SHORT_MS){
+					set_effect_mode((effect_mode + 1) % NUM_EFFECT_MODES);
+					if(main_b_cdc_enable){
+						uint8_t evt[3] = {0x01, 'C', 1};
+						udi_cdc_write_buf(evt, 3);
+					}
+				}
+			}
+			chord_state = CHORD_IDLE;
+		}
 
-			//Check Touch Sensors
+		/* --- LED effect animation (always runs, LED 4 untouched) --- */
+		update_effects();
+
+		/* --- HID key sending (USB connected only) --- */
+		if(USBPower && ((millis - last_usb_comms) < 100)){
+			if(button1){ button1 = false; send_keys(1); }
+			if(button2){ button2 = false; send_keys(2); }
+			if(button3){ button3 = false; send_keys(3); }
+			if(button4){ button4 = false; send_keys(4); }
+
 			touch_sensors_measure();
-			if (p_selfcap_measure_data->measurement_done_touch == 1u) {
-
+			if(p_selfcap_measure_data->measurement_done_touch == 1u){
 				p_selfcap_measure_data->measurement_done_touch = 0u;
 				slider_state = GET_SELFCAP_SENSOR_STATE(0);
-				if(slider_state)
-				{
+				if(slider_state){
 					slider_position = GET_SELFCAP_ROTOR_SLIDER_POSITION(0);
 					if(slider_position > last_slider_position + 10){
 						last_slider_position = slider_position;
-						send_keys(6);//sliding down
+						send_keys(6);
 					}
 					if(slider_position < last_slider_position - 10){
 						last_slider_position = slider_position;
-						send_keys(5);//sliding up
+						send_keys(5);
 					}
 				}
 			}
 		}
 
-		//Update USB serial console if we got data
 		if(main_b_cdc_enable){
 			if(udi_cdc_get_nb_received_data()){
 				updateSerialConsole();
 			}
 		}
-		
-		//Go to sleep to save battery
-		//if (!USBPower && ((uart_event + 1000) < millis)) {
-		if (!USBPower && ((millis - uart_event) > 1000)) {
+
+		if(!USBPower && ((millis - uart_event) > 1000)){
 			standby_sleep();
 		}
-		
-		
 	}
 }
 
@@ -568,6 +592,72 @@ void configure_rtc_count(void)
 /*! \brief Initialize timer
  *
  */
+
+/* Full-saturation HSV→RGB. h/v both 0-255. */
+static void hsv_to_rgb(uint8_t h, uint8_t v, uint8_t *r, uint8_t *g, uint8_t *b){
+	uint8_t region = h / 43;
+	uint8_t rem    = (h - region * 43) * 6;
+	uint8_t q = (uint16_t)v * (255 - rem) >> 8;
+	uint8_t t = (uint16_t)v * rem >> 8;
+	switch(region){
+		case 0: *r = v; *g = t; *b = 0; break;
+		case 1: *r = q; *g = v; *b = 0; break;
+		case 2: *r = 0; *g = v; *b = t; break;
+		case 3: *r = 0; *g = q; *b = v; break;
+		case 4: *r = t; *g = 0; *b = v; break;
+		default:*r = v; *g = 0; *b = q; break;
+	}
+}
+
+/* Set effect mode, reset animation state, restore LEDs when going to 0. */
+void set_effect_mode(uint8_t mode){
+	effect_mode  = mode;
+	effect_step  = 0;
+	effect_hue   = 0;
+	effect_timer = millis;
+	if(mode == 0){
+		led_set_color(1, led1color);
+		led_set_color(2, led2color);
+		led_set_color(3, led3color);
+	}
+	if(main_b_cdc_enable){
+		uint8_t evt[3] = {0x01, 'V', mode};
+		udi_cdc_write_buf(evt, 3);
+	}
+}
+
+/* Advance LED animation one frame; call every main-loop iteration.
+   Only touches LEDs 1-3; LED 4 is reserved for mute-state indicator. */
+static void update_effects(void){
+	if(effect_mode == 0) return;
+	uint32_t now = millis;
+
+	if(effect_mode == 1){
+		/* Rainbow chase: one LED lit at a time, hue cycles across LEDs and advances. */
+		if((now - effect_timer) < EFFECT_CHASE_STEP_MS) return;
+		effect_timer = now;
+		uint8_t off[3] = {0, 0, 0};
+		led_set_color(1, off); led_set_color(2, off); led_set_color(3, off);
+		uint8_t r, g, b;
+		hsv_to_rgb(effect_hue + effect_step * 85, 200, &r, &g, &b);
+		uint8_t color[3] = {r, g, b};
+		led_set_color(effect_step + 1, color);
+		effect_step = (effect_step + 1) % 3;
+		if(effect_step == 0) effect_hue += 16;
+
+	} else if(effect_mode == 2){
+		/* Breathe: all 3 LEDs pulse together with slow hue drift. */
+		if((now - effect_timer) < EFFECT_BREATHE_STEP_MS) return;
+		effect_timer = now;
+		uint8_t brightness = (effect_step < 128) ? effect_step * 2 : (255 - effect_step) * 2;
+		uint8_t r, g, b;
+		hsv_to_rgb(effect_hue, brightness, &r, &g, &b);
+		uint8_t color[3] = {r, g, b};
+		led_set_color(1, color); led_set_color(2, color); led_set_color(3, color);
+		if(++effect_step == 0) effect_hue += 8;
+	}
+}
+
 void timer_init(void)
 {
 	/* Configure and enable RTC */
@@ -582,20 +672,12 @@ void timer_init(void)
 }
 
 void button1_handler(void){
-	if(!port_pin_get_input_level(BUTTON1)){
-		// Falling edge: button pressed
+	if(button1 == false){
 		if((millis - lastButton1Press) > DEBOUNCE_TIME){
 			lastButton1Press = millis;
-			button1_held = true;
-			button1_held_start = millis;
+			button1 = true;
 			uart_event = millis;
 		}
-	} else {
-		// Rising edge: button released — short press fires normal keypress
-		if(button1_held && (millis - button1_held_start) < LONG_PRESS_TIME){
-			button1 = true;
-		}
-		button1_held = false;
 	}
 }
 
