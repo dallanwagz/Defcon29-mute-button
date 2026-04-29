@@ -113,6 +113,7 @@ uint8_t fwversion[1];
 
 extern struct tcc_module tcc2_instance;
 
+bool button_flash_enabled = true;
 volatile uint32_t last_usb_comms = 0;
 
 /* Macros */

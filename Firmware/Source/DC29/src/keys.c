@@ -15,6 +15,7 @@ extern uint8_t keymapstarts[6];
 extern bool main_b_cdc_enable;
 
 extern bool wait_for_sof;
+extern bool button_flash_enabled;
 
 extern volatile uint32_t millis;
 
@@ -62,7 +63,7 @@ void send_keys(uint8_t key){
 		udi_cdc_write_buf(evt, 5);
 	}
 	uint8_t saved_led[3] = {0, 0, 0};
-	bool flash_led = (key >= 1 && key <= 4);
+	bool flash_led = button_flash_enabled && (key >= 1 && key <= 4);
 	if(flash_led){
 		uint8_t idx = (key - 1) * 3;
 		saved_led[0] = ledvalues[idx];

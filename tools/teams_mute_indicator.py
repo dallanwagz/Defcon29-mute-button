@@ -536,9 +536,12 @@ async def supervise(
     idle_color: Color = (0, 200, 255),
     idle_speed: int = 150,
     brightness: float = 1.0,
+    button_flash: bool = True,
 ) -> None:
     badge = BadgeWriter(port_name, brightness=brightness)
     badge.set_led(4, *COLOR_CLEAR)
+    if not button_flash:
+        badge.write(bytes([0x01, ord('F'), 0]))
     badge.query_keymap(4)  # log button 4's configured keymap at startup
 
     animator = LedAnimator(badge) if idle_animation else None
@@ -632,6 +635,12 @@ def main() -> int:
         metavar="LEVEL",
         help="LED brightness from 0.0 (off) to 1.0 (full). Applies to all LEDs. Default: 1.0",
     )
+    parser.add_argument(
+        "--no-button-flash",
+        action="store_true",
+        default=False,
+        help="Disable the white LED flash on button press (requires firmware support for 0x01 F command).",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -648,6 +657,7 @@ def main() -> int:
             idle_color=args.idle_color,
             idle_speed=args.idle_speed,
             brightness=args.brightness,
+            button_flash=not args.no_button_flash,
         ))
     except KeyboardInterrupt:
         return 0
