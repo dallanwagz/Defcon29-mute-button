@@ -129,6 +129,10 @@ static uint32_t   effect_timer = 0;
 static void update_effects(void);
 volatile uint32_t last_usb_comms = 0;
 
+/* Forward declarations for static functions defined later in this file */
+static void update_effects(void);
+static void hsv_to_rgb(uint8_t h, uint8_t v, uint8_t *r, uint8_t *g, uint8_t *b);
+
 /* Macros */
 
 /**

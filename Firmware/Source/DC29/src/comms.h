@@ -41,16 +41,16 @@ void configure_usart_callbacks(void);
 
 void send_heartbeats(void);
 
-volatile uint32_t uart_event;
+extern volatile uint32_t uart_event;
 
 
 //! [module_inst]
-struct usart_module usart_top_instance;
-struct usart_module usart_right_instance;
-struct usart_module usart_bottom_instance;
-struct usart_module usart_left_instance;
-struct usart_module usart_usba_instance;
-struct usart_module usart_usbc_instance;
+extern struct usart_module usart_top_instance;
+extern struct usart_module usart_right_instance;
+extern struct usart_module usart_bottom_instance;
+extern struct usart_module usart_left_instance;
+extern struct usart_module usart_usba_instance;
+extern struct usart_module usart_usbc_instance;
 //! [module_inst]
 
 //! [rx_buffer_var]

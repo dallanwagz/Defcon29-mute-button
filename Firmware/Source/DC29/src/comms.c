@@ -11,6 +11,15 @@
 extern volatile uint32_t millis;
 extern bool USBPower;
 
+volatile uint32_t uart_event;
+
+struct usart_module usart_top_instance;
+struct usart_module usart_right_instance;
+struct usart_module usart_bottom_instance;
+struct usart_module usart_left_instance;
+struct usart_module usart_usba_instance;
+struct usart_module usart_usbc_instance;
+
 
 volatile uint8_t rx_top_buffer[RX_BUFFER_LENGTH];
 volatile uint8_t rx_right_buffer[RX_BUFFER_LENGTH];
