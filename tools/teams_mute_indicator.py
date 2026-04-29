@@ -48,6 +48,7 @@ Use --toggle-hotkey '' to disable the button-toggle listener.
 
 import argparse
 import asyncio
+import colorsys
 import json
 import logging
 import os
@@ -291,8 +292,9 @@ class LedAnimator:
 
     Patterns
     --------
-    chase   — one LED lit at a time, cycling through leds tuple
-    solid   — all specified LEDs set to the same color
+    chase         — one LED lit at a time, cycling through leds tuple
+    rainbow_chase — same chase but hue advances continuously through the spectrum
+    solid         — all specified LEDs set to the same color
     """
 
     def __init__(self, badge: BadgeWriter) -> None:
@@ -314,6 +316,18 @@ class LedAnimator:
         self._task = asyncio.create_task(
             self._chase(color=color, speed_ms=speed_ms, leds=leds),
             name="led-chase",
+        )
+
+    def start_rainbow_chase(
+        self,
+        speed_ms: int = 150,
+        leds: tuple[int, ...] = (1, 2, 3),
+    ) -> None:
+        """Chase with hue advancing through the full spectrum on each step."""
+        self._cancel()
+        self._task = asyncio.create_task(
+            self._rainbow_chase(speed_ms=speed_ms, leds=leds),
+            name="led-rainbow-chase",
         )
 
     def start_solid(
@@ -349,6 +363,25 @@ class LedAnimator:
                     self._badge.set_led(n, r, g, b)
                     await asyncio.sleep(speed_ms / 1000)
                     self._badge.set_led(n, 0, 0, 0)
+        except asyncio.CancelledError:
+            for n in leds:
+                self._badge.set_led(n, 0, 0, 0)
+
+    async def _rainbow_chase(
+        self,
+        speed_ms: int,
+        leds: tuple[int, ...],
+    ) -> None:
+        hue = 0.0
+        hue_step = 1.0 / (len(leds) * 6)  # full spectrum over 6 cycles
+        try:
+            while True:
+                for n in leds:
+                    r, g, b = colorsys.hsv_to_rgb(hue % 1.0, 1.0, 0.9)
+                    self._badge.set_led(n, int(r * 255), int(g * 255), int(b * 255))
+                    await asyncio.sleep(speed_ms / 1000)
+                    self._badge.set_led(n, 0, 0, 0)
+                    hue += hue_step
         except asyncio.CancelledError:
             for n in leds:
                 self._badge.set_led(n, 0, 0, 0)
@@ -434,7 +467,11 @@ async def run_once(
         toggle_queue.get_nowait()
 
     def _start_idle() -> None:
-        if animator and idle_animation == "chase":
+        if not animator:
+            return
+        if idle_animation == "rainbow":
+            animator.start_rainbow_chase(speed_ms=idle_speed)
+        elif idle_animation == "chase":
             animator.start_chase(color=idle_color, speed_ms=idle_speed)
 
     async with websockets.connect(url, max_size=2**20) as ws:
@@ -560,7 +597,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--idle-animation",
-        choices=["chase"],
+        choices=["chase", "rainbow"],
         default=None,
         help="LED animation to run on LEDs 1-3 when not in a meeting (default: none).",
     )
