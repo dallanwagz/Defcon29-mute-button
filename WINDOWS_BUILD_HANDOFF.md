@@ -5,13 +5,19 @@ Pull the `playground` branch and follow the steps below.
 
 ## What was done on the Mac (summary)
 
-Three firmware files were modified and pushed to `playground`:
+Firmware cleanup + macropad hardening on `playground`:
 
 | File | Change |
 |------|--------|
 | `Firmware/Source/DC29/src/keys.c` | Emits `0x01 B n mod key` over CDC before each button press |
-| `Firmware/Source/DC29/src/serialconsole.c` | Extended escape protocol with `K` (set keymap), `Q` (query keymap), `L` (set LED color) commands |
-| `tools/teams_mute_indicator.py` | Python-side: reader thread, `set_led()`, `LedAnimator` with chase pattern, `--idle-animation` CLI flag |
+| `Firmware/Source/DC29/src/serialconsole.c` | Stripped to escape-byte dispatcher only (~100 lines vs 1661); fixed `set_button_keymap` boundary-marker guard |
+| `Firmware/Source/DC29/src/serialconsole.h` | Stripped to bare minimum |
+| `Firmware/Source/DC29/src/main.h` | FIRMWARE_VERSION→2, compact EEPROM layout (offsets 1-26), default button4 keymap = ctrl+alt+m |
+| `Firmware/Source/DC29/src/main.c` | Removed game/challenge globals, unwrapped IDLE check, removed Simon ISR/audio |
+| `Firmware/Source/DC29/src/comms.c` | Stripped inter-badge protocol; kept UART hardware setup and callbacks |
+| `Firmware/Source/DC29/src/comms.h` | Removed inter-badge function declarations |
+| `games.c` / `games.h` | Deleted |
+| `tools/teams_mute_indicator.py` | Python-side: reader thread, `set_led()`, `LedAnimator` with rainbow chase, `--brightness`, `--idle-animation` |
 
 The full bidirectional escape protocol is now:
 
@@ -27,12 +33,16 @@ The full bidirectional escape protocol is now:
 | Badge → Mac | `0x01 R n mod key` | Reply to Q query |
 | Badge → Mac | `0x01 A n` | ACK after K set-keymap |
 
-## Active debugging problem
+## Expected behavior after flash
 
-Button 4 is configured in EEPROM to send `[ctrl][alt]m` (modifier `0x05`, keycode `0x10`).
-The Mac-side Python service listens for `Ctrl+Alt+M` globally and calls the Teams WebSocket
-`toggle-mute` action. After flashing, the service log
-will show `Badge button 4 pressed → modifier=0x05 keycode=0x10` on each press if correct.
+FIRMWARE_VERSION is now 2. On first boot after flash the badge detects the version mismatch
+and calls `reset_eeprom()`, writing the new compact layout with the default keymap including
+button 4 = ctrl+alt+m (modifier `0x05`, keycode `0x10`).
+
+The Mac-side Python service triggers mute toggle via the `0x01 B 4` CDC event (serial
+side-channel), not the HID keystroke — so button 4 works even if HID is momentarily broken.
+After flashing, the service log should show `Badge button 4 pressed → modifier=0x05 keycode=0x10`
+on each press.
 
 ## Build steps (Microchip Studio 7.0, Windows)
 
