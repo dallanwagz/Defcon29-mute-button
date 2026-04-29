@@ -1,98 +1,216 @@
 # Windows Build Handoff
 
-This file is a session handoff for the Claude Code agent on the Windows machine.
-Pull the `playground` branch and follow the steps below.
+This file contains complete instructions for the Claude Code agent on the Windows machine
+to build and flash the DEF CON 29 badge firmware.
 
-## What was done on the Mac (summary)
+---
 
-Firmware cleanup + macropad hardening on `playground`:
+## Objective
 
-| File | Change |
-|------|--------|
-| `Firmware/Source/DC29/src/keys.c` | Emits `0x01 B n mod key` over CDC before each button press |
-| `Firmware/Source/DC29/src/serialconsole.c` | Stripped to escape-byte dispatcher only (~100 lines vs 1661); fixed `set_button_keymap` boundary-marker guard |
-| `Firmware/Source/DC29/src/serialconsole.h` | Stripped to bare minimum |
-| `Firmware/Source/DC29/src/main.h` | FIRMWARE_VERSION→2, compact EEPROM layout (offsets 1-26), default button4 keymap = ctrl+alt+m |
-| `Firmware/Source/DC29/src/main.c` | Removed game/challenge globals, unwrapped IDLE check, removed Simon ISR/audio |
-| `Firmware/Source/DC29/src/comms.c` | Stripped inter-badge protocol; kept UART hardware setup and callbacks |
-| `Firmware/Source/DC29/src/comms.h` | Removed inter-badge function declarations |
-| `games.c` / `games.h` | Deleted |
-| `tools/teams_mute_indicator.py` | Python-side: reader thread, `set_led()`, `LedAnimator` with rainbow chase, `--brightness`, `--idle-animation` |
+Build the firmware from the `playground` branch and flash it to the badge over USB.
+The badge is an ATSAMD21G16B repurposed as a USB macro keypad with a Teams mute indicator.
 
-The full bidirectional escape protocol is now:
+---
 
-| Direction | Bytes | Meaning |
-|-----------|-------|---------|
-| Mac → Badge | `0x01 M` | LED 4 → red (muted) |
-| Mac → Badge | `0x01 U` | LED 4 → green (unmuted) |
-| Mac → Badge | `0x01 X` | LED 4 → off (not in meeting) |
-| Mac → Badge | `0x01 K n mod key` | Set button n (1–6) to modifier+keycode, saved to EEPROM |
-| Mac → Badge | `0x01 Q n` | Query button n keymap |
-| Mac → Badge | `0x01 L n r g b` | Set LED n (1–4) color immediately (not saved) |
-| Badge → Mac | `0x01 B n mod key` | Button n was pressed, first keymap entry |
-| Badge → Mac | `0x01 R n mod key` | Reply to Q query |
-| Badge → Mac | `0x01 A n` | ACK after K set-keymap |
+## Prerequisites
 
-## Expected behavior after flash
+- **Microchip Studio 7.0** must be installed.
+- **Git** must be available.
+- **Python 3** must be available (`python` or `python3` on PATH) for the UF2 conversion step.
+- The badge must be present and able to enter DFU (bootloader) mode.
 
-FIRMWARE_VERSION is now 2. On first boot after flash the badge detects the version mismatch
-and calls `reset_eeprom()`, writing the new compact layout with the default keymap including
-button 4 = ctrl+alt+m (modifier `0x05`, keycode `0x10`).
+---
 
-The Mac-side Python service triggers mute toggle via the `0x01 B 4` CDC event (serial
-side-channel), not the HID keystroke — so button 4 works even if HID is momentarily broken.
-After flashing, the service log should show `Badge button 4 pressed → modifier=0x05 keycode=0x10`
-on each press.
+## Step 1 — Get the code
 
-## Build steps (Microchip Studio 7.0, Windows)
+If this repo is already cloned on this machine, pull the latest:
 
-1. `git pull origin playground` (or clone if not already present)
-2. Open `Firmware/Source/Defcon29.atsln` in Microchip Studio
-3. Confirm **Release** configuration is selected (not Debug — Debug doesn't fit in 56 KB)
-4. Confirm preprocessor symbol is `__SAMD21G16B__` only (Project → Properties → Toolchain → ARM/GNU C Compiler → Symbols). Do **not** also add `__SAMD21J18A__`.
-5. Confirm linker script is `src/samd21g16b_flash.ld` (ORIGIN = 0x2000). Both `<armgcc.linker.miscellaneous.LinkerFlags>` entries in the Release `<PropertyGroup>` of the `.cproj` must point here.
-6. Build → Build Solution. Output should end with no errors.
-7. Convert: `uf2conv.py DC29.hex --convert --output DC29.uf2`
+```
+git pull origin playground
+git checkout playground
+```
 
-## Flash steps
+If it is not cloned yet:
 
-1. Hold **bottom-right button (BUTTON4)**.
-2. Plug in USB — badge appears as a mass-storage drive, top-left LED blinks red.
-3. **Release the button immediately** once the drive mounts. Holding it across reboot traps the badge in DFU indefinitely (looks like a crash — just unplug and replug without holding any button).
-4. Drag `DC29.uf2` onto the drive.
-5. Drive disappears → badge rebooted. Confirm a CDC serial port appears (`COMx` on Windows).
+```
+git clone https://github.com/dallanwagz/Defcon29-mute-button.git
+cd Defcon29-mute-button
+git checkout playground
+```
+
+Confirm you are on the `playground` branch and that the latest commit matches the one pushed
+from the Mac (run `git log --oneline -5` and check for the firmware cleanup commit).
+
+---
+
+## Step 2 — Get uf2conv.py
+
+`uf2conv.py` is needed to convert the compiled `.hex` to `.uf2` for the bootloader.
+
+Check if it is already present anywhere on the machine:
+```
+where uf2conv.py
+```
+
+If not found, download it:
+```
+curl -o uf2conv.py https://raw.githubusercontent.com/microsoft/uf2/master/utils/uf2conv.py
+```
+or download it manually from https://github.com/microsoft/uf2/blob/master/utils/uf2conv.py
+and save it to the repo root or somewhere on PATH.
+
+---
+
+## Step 3 — Build in Microchip Studio
+
+1. Open `Firmware\Source\Defcon29.atsln` in Microchip Studio 7.0.
+
+2. In the Solution Explorer, expand the project. You should see the source files under `src\`.
+   Verify that `games.c` and `games.h` are **not** present — they were deleted as part of the
+   cleanup. If Microchip Studio shows a missing-file error for them, right-click each and
+   choose "Remove from Project".
+
+3. Set the build configuration to **Release** (not Debug — Debug does not fit in the 56 KB
+   available after the 8 KB bootloader).
+
+4. Verify build settings — these should already be correct in the `.cproj` but double-check:
+   - **Project → Properties → Toolchain → ARM/GNU C Compiler → Symbols**
+     Must contain `__SAMD21G16B__`. Must NOT also contain `__SAMD21J18A__`.
+   - **Project → Properties → Toolchain → ARM/GNU C Linker → Miscellaneous → Linker Flags**
+     Must end with `-T../src/samd21g16b_flash.ld` (ORIGIN = 0x2000).
+     Must NOT reference `samd21j18a_flash.ld` (ORIGIN = 0x0 — this would overwrite the
+     bootloader and brick the badge).
+
+5. Build: **Build → Build Solution** (Ctrl+Shift+B).
+
+   The output window should end with something like:
+   ```
+   Program Memory Usage  :  XXXXX bytes  XX.X% Full
+   Data Memory Usage     :  XXXX bytes   XX.X% Full
+   Build succeeded.
+   ```
+   Program memory should be well under 57344 bytes (56 KB). If it says "Build FAILED",
+   check the error list — do not proceed to flash.
+
+6. The compiled output is at:
+   ```
+   Firmware\Source\DC29\Release\DC29.hex
+   ```
+
+---
+
+## Step 4 — Convert to UF2
+
+From the repo root (or wherever `uf2conv.py` is):
+
+```
+python uf2conv.py Firmware\Source\DC29\Release\DC29.hex --convert --output DC29.uf2
+```
+
+Confirm `DC29.uf2` was created and is non-zero in size.
+
+---
+
+## Step 5 — Enter DFU (bootloader) mode
+
+1. **Hold** the bottom-right button (BUTTON4 / physical button at bottom-right of badge).
+2. While holding it, **plug the badge into USB**.
+3. The top-left LED will blink red and the badge will appear as a USB mass-storage drive
+   (e.g. `D:\` or `E:\`).
+4. **Release the button immediately** once the drive letter appears in Explorer.
+   - If you hold the button through the reboot, the badge gets stuck in DFU indefinitely
+     (it looks like a crash). Fix: unplug and replug USB without holding any button.
+
+---
+
+## Step 6 — Flash
+
+Drag and drop `DC29.uf2` onto the DFU drive, or use the command line:
+
+```
+copy DC29.uf2 D:\
+```
+(substitute the correct drive letter)
+
+The drive will disappear within a second as the badge reboots with new firmware.
+
+---
+
+## Step 7 — Verify the badge rebooted
+
+After flashing, unplug and replug the badge (no button held). A CDC serial port should
+appear in Device Manager under "Ports (COM & LPT)" — note the COM number (e.g. `COM5`).
+
+The badge's startup LED sequence (red → green → blue chase across all 4 LEDs) confirms
+the firmware is running.
+
+---
+
+## What happens on first boot after this flash
+
+`FIRMWARE_VERSION` was bumped from 1 to 2. On first boot the badge detects the mismatch
+and calls `reset_eeprom()`, which:
+- Erases and reinitializes the EEPROM with the new compact layout
+- Writes the default keymap including button 4 = **ctrl+alt+m** (modifier `0x05`, keycode `0x10`)
+- Sets default LED colors (red / green / blue / grey)
+
+This is expected and correct. No manual keymap programming is needed after flash.
+
+---
 
 ## After flashing — verification on Mac
 
-With the badge plugged in and the launchd service running
-(`~/Library/LaunchAgents/com.local.dc29-teams-mute.plist`):
+Bring the badge back to the Mac. With the badge plugged in, reload the launchd service:
+
+```
+launchctl unload ~/Library/LaunchAgents/com.local.dc29-teams-mute.plist
+launchctl load  ~/Library/LaunchAgents/com.local.dc29-teams-mute.plist
+```
+
+Then watch the log:
 
 ```
 tail -f /tmp/dc29-teams-mute.err
 ```
 
-Expected on startup:
+**Expected on startup:**
 ```
 Badge button 4 keymap: modifier=0x05 keycode=0x10
 ```
 
-Expected each time button 4 is pressed:
+**Expected each time button 4 is pressed:**
 ```
 Badge button 4 pressed → modifier=0x05 keycode=0x10
 ```
 
-If modifier or keycode is wrong, use the badge serial console menu (option 2 → button 4)
-and type `[ctrl][alt]m` to restore the correct keymap.
+If the keymap line shows wrong values (modifier or keycode not 0x05/0x10), the EEPROM reset
+did not apply the default correctly. Fix by sending the `K` command from the Mac Python
+service directly (the interactive serial console menu no longer exists in this firmware):
 
-## Mac service config (already deployed)
-
-- Plist: `~/Library/LaunchAgents/com.local.dc29-teams-mute.plist`
-- Python: `/Users/dallan/repo/Defcon29-mute-button/.venv/bin/python3`
-- Port: `/dev/tty.usbmodem123451`
-- Toggle hotkey: `<ctrl>+<alt>+m`
-
-To reload after reflash:
+```python
+# Run this once from a Python REPL with pyserial installed, badge on /dev/tty.usbmodem*
+import serial, time
+s = serial.Serial('/dev/tty.usbmodem123451', 9600, timeout=1)
+s.write(bytes([0x01, ord('K'), 4, 0x05, 0x10]))   # set button 4 to ctrl+alt+m
+time.sleep(0.1)
+print(s.read(3))  # should print b'\x01An' (ACK for button 4)
+s.close()
 ```
-launchctl unload ~/Library/LaunchAgents/com.local.dc29-teams-mute.plist
-launchctl load  ~/Library/LaunchAgents/com.local.dc29-teams-mute.plist
-```
+
+---
+
+## Escape-byte protocol reference
+
+The full bidirectional side-channel over USB CDC (`0x01` prefix):
+
+| Direction    | Bytes              | Meaning                                           |
+|--------------|--------------------|---------------------------------------------------|
+| Mac → Badge  | `0x01 M`           | LED 4 → red (muted)                               |
+| Mac → Badge  | `0x01 U`           | LED 4 → green (unmuted)                           |
+| Mac → Badge  | `0x01 X`           | LED 4 → off (not in meeting)                      |
+| Mac → Badge  | `0x01 K n mod key` | Set button n (1–6) to single key; saved to EEPROM |
+| Mac → Badge  | `0x01 Q n`         | Query button n keymap                             |
+| Mac → Badge  | `0x01 L n r g b`   | Set LED n (1–4) color immediately (not saved)     |
+| Badge → Mac  | `0x01 B n mod key` | Button n was pressed, first keymap entry          |
+| Badge → Mac  | `0x01 R n mod key` | Reply to Q query                                  |
+| Badge → Mac  | `0x01 A n`         | ACK after K set-keymap                            |
