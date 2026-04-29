@@ -49,6 +49,7 @@ from typing import Optional
 
 from dc29.badge import BadgeAPI
 from dc29.bridges.base import BridgePage, PageButton
+from dc29.bridges.colors import BRAND_COLORS, POSITION_ACTIVE
 from dc29.bridges.focus import FocusBridge
 from dc29.config import Config, get_config
 
@@ -98,13 +99,15 @@ _DEFAULT_BUTTON_ACTIONS: dict[int, str] = {
 }
 
 _DEFAULT_LED_COLORS: dict[str, tuple[int, int, int]] = {
-    "all-unreads":  (0, 60, 200),    # blue
-    "mentions":     (120, 0, 200),   # purple
-    "quick-switch": (0, 180, 160),   # cyan
-    "threads":      (0, 140, 200),   # blue-cyan
-    "huddle":       (0, 160, 0),     # green
-    "next-unread":  (0, 120, 180),
-    "dnd":          (200, 120, 0),   # orange
+    # Default layout: B1=all-unreads, B2=mentions, B3=quick-switch, B4=huddle
+    # Colors follow positional semantics (warm-red / blue / amber / green).
+    "all-unreads":  POSITION_ACTIVE[1],  # warm red  — the "urgent pile" energy
+    "mentions":     POSITION_ACTIVE[2],  # cool blue — @you = direct communication
+    "quick-switch": POSITION_ACTIVE[3],  # amber     — navigate/find
+    "threads":      POSITION_ACTIVE[2],  # blue      — communication family
+    "huddle":       POSITION_ACTIVE[4],  # green     — connect with people
+    "next-unread":  POSITION_ACTIVE[3],  # amber     — navigate to next
+    "dnd":          POSITION_ACTIVE[1],  # warm red  — do-not-disturb = stop/block
 }
 
 
@@ -140,11 +143,13 @@ class SlackBridge(FocusBridge):
     def _build_page(self) -> BridgePage:
         buttons: dict[int, PageButton] = {}
         for btn, action in self._button_actions.items():
-            led = self._led_colors.get(action, (60, 60, 60))
+            positional_default = POSITION_ACTIVE.get(btn, (60, 60, 60))
+            led = self._led_colors.get(action, positional_default)
             buttons[btn] = PageButton(label=action, led=led)
         return BridgePage(
             name="slack",
             description="Slack — productivity shortcuts",
+            brand_color=BRAND_COLORS["slack"],
             buttons=buttons,
         )
 

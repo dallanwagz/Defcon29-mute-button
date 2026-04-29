@@ -23,7 +23,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 try:
     import serial
@@ -77,6 +77,10 @@ class BadgeState:
     last_chord: Optional[int] = None
     key_map: dict[int, tuple[int, int]] = field(default_factory=dict)
     """button → (modifier, keycode) as last reported by EVT_KEY_REPLY."""
+
+    current_page: Optional[Any] = None
+    """The currently active bridge page (a :class:`~dc29.bridges.base.BridgePage`
+    or ``None``), updated by the bridge layer via :meth:`BadgeAPI.set_current_page`."""
 
 
 class BadgeAPI:
@@ -150,6 +154,13 @@ class BadgeAPI:
 
         Use this in the TUI / bridge layer instead of wiring up every individual
         callback — it fires after the granular callbacks so those still work.
+        """
+
+        self.on_page_change: Optional[Callable[[Optional[Any]], None]] = None
+        """Called when the active bridge page changes.
+
+        Argument is the new :class:`~dc29.bridges.base.BridgePage` (or ``None``
+        when no bridge has focus).  Fired by :meth:`set_current_page`.
         """
 
         # Start reader immediately so callbacks fire as soon as badge plugs in.
@@ -229,6 +240,24 @@ class BadgeAPI:
             cmd = bytes([ESCAPE, CMD_CLEAR])
         self._write(cmd)
         self._state.mute_state = state
+        self._fire_state_change()
+
+    def set_current_page(self, page: Any) -> None:
+        """Notify observers that the active bridge page has changed.
+
+        Called by :class:`~dc29.bridges.focus.FocusBridge` on focus gain/loss
+        and by :class:`~dc29.bridges.teams.TeamsBridge` on meeting start/end.
+        The TUI subscribes via :attr:`on_page_change` to update its context pane.
+
+        Args:
+            page: The active :class:`~dc29.bridges.base.BridgePage`, or ``None``.
+        """
+        self._state.current_page = page
+        if self.on_page_change is not None:
+            try:
+                self.on_page_change(page)
+            except Exception:
+                log.exception("on_page_change callback raised")
         self._fire_state_change()
 
     def set_effect_mode(self, mode: int) -> None:

@@ -62,15 +62,9 @@ void send_keys(uint8_t key){
 		uint8_t evt[5] = {0x01, 'B', key, rmod, rkc};
 		udi_cdc_write_buf(evt, 5);
 	}
-	uint8_t saved_led[3] = {0, 0, 0};
-	bool flash_led = button_flash_enabled && (key >= 1 && key <= 4);
-	if(flash_led){
-		uint8_t idx = (key - 1) * 3;
-		saved_led[0] = ledvalues[idx];
-		saved_led[1] = ledvalues[idx + 1];
-		saved_led[2] = ledvalues[idx + 2];
-		uint8_t white[3] = {255, 255, 255};
-		led_set_color(key, white);
+	bool do_ripple = button_flash_enabled && (key >= 1 && key <= 4);
+	if(do_ripple){
+		led_ripple_start(key);
 	}
 	if(key < 6){
 		for(int x=keymapstarts[key-1]+1; x<keymapstarts[key]; x+=2){
@@ -139,7 +133,7 @@ void send_keys(uint8_t key){
 			}
 		}
 	}
-	if(flash_led){
-		led_set_color(key, saved_led);
+	if(do_ripple){
+		led_ripple_finish();
 	}
 }

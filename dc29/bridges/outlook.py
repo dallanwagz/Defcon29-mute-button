@@ -69,6 +69,7 @@ from typing import Optional
 
 from dc29.badge import BadgeAPI
 from dc29.bridges.base import BridgePage, PageButton
+from dc29.bridges.colors import BRAND_COLORS, POSITION_ACTIVE
 from dc29.bridges.focus import FocusBridge
 from dc29.bridges.slack import _press_shortcut, _PYNPUT_AVAILABLE
 from dc29.config import Config, get_config
@@ -107,12 +108,14 @@ _DEFAULT_BUTTON_ACTIONS: dict[int, str] = {
 }
 
 _DEFAULT_LED_COLORS: dict[str, tuple[int, int, int]] = {
-    "delete":    (220, 0,   0),
-    "reply":     (0,   60, 180),
-    "reply-all": (180, 160, 0),
-    "forward":   (100, 0,  180),
-    "archive":   (0,  120, 60),
-    "flag":      (200, 80,  0),
+    # Default layout: B1=delete, B2=reply, B3=reply-all, B4=forward
+    # Positional semantics land almost perfectly here.
+    "delete":    POSITION_ACTIVE[1],  # warm red  — destructive ✓
+    "reply":     POSITION_ACTIVE[2],  # cool blue — direct communication ✓
+    "reply-all": POSITION_ACTIVE[3],  # amber     — reach everyone ✓
+    "forward":   POSITION_ACTIVE[4],  # green     — send forward / create new thread ✓
+    "archive":   POSITION_ACTIVE[4],  # green     — positive triage action
+    "flag":      POSITION_ACTIVE[3],  # amber     — mark / find later
 }
 
 _DEFAULT_PULSE_COLOR: tuple[int, int, int] = (255, 0, 0)
@@ -171,11 +174,13 @@ class OutlookBridge(FocusBridge):
     def _build_page(self) -> BridgePage:
         buttons: dict[int, PageButton] = {}
         for btn, action in self._button_actions.items():
-            led = self._led_colors.get(action, (60, 60, 60))
+            positional_default = POSITION_ACTIVE.get(btn, (60, 60, 60))
+            led = self._led_colors.get(action, positional_default)
             buttons[btn] = PageButton(label=action, led=led)
         return BridgePage(
             name="outlook",
             description="Outlook — email shortcuts",
+            brand_color=BRAND_COLORS["outlook"],
             buttons=buttons,
         )
 

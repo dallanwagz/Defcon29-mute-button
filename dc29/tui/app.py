@@ -26,7 +26,7 @@ every handler runs on the event-loop thread.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from textual import on
 from textual.app import App, ComposeResult
@@ -35,7 +35,6 @@ from textual.color import Color
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.css.query import NoMatches
 from textual.message import Message
-from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -55,6 +54,7 @@ from textual.widgets import (
 )
 
 from dc29.badge import BadgeAPI
+from dc29.bridges.base import BridgePage
 from dc29.protocol import BUILTIN_COLORS, EffectMode, MuteState
 
 # ---------------------------------------------------------------------------
@@ -182,6 +182,14 @@ class ConnectMessage(Message):
 
 class DisconnectMessage(Message):
     """Fired when the badge disconnects."""
+
+
+class PageChangeMessage(Message):
+    """Fired when the active bridge page changes."""
+
+    def __init__(self, page: Optional[BridgePage]) -> None:
+        super().__init__()
+        self.page = page
 
 
 # ---------------------------------------------------------------------------
@@ -407,37 +415,160 @@ class EditKeyModal(ModalScreen):
 
 
 # ---------------------------------------------------------------------------
+# Context Pane — the "StreamDeck profile" display
+# ---------------------------------------------------------------------------
+
+
+class ButtonCard(Container):
+    """One button's action card in the active-context grid.
+
+    Background dims the LED color; border brightens it so the card has
+    a colored glow that matches what the hardware LED looks like.
+    """
+
+    DEFAULT_CSS = """
+    ButtonCard {
+        width: 1fr;
+        height: 6;
+        border: solid #333333;
+        padding: 1 1;
+        margin: 0 0 0 1;
+    }
+    ButtonCard:first-of-type {
+        margin-left: 0;
+    }
+    ButtonCard .card-num {
+        color: #666666;
+        text-style: bold;
+    }
+    ButtonCard .card-action {
+        color: #cccccc;
+        text-style: bold;
+        overflow: hidden;
+    }
+    """
+
+    def __init__(self, btn_num: int) -> None:
+        super().__init__()
+        self._n = btn_num
+
+    def compose(self) -> ComposeResult:
+        yield Label(f"B{self._n}", classes="card-num")
+        yield Label("—", classes="card-action", id=f"card-action-{self._n}")
+
+    def set_action(self, label: str, led: tuple[int, int, int]) -> None:
+        r, g, b = led
+        self.styles.background = Color(max(r // 6, 6), max(g // 6, 6), max(b // 6, 6))
+        self.styles.border = ("solid", Color(r // 2, g // 2, b // 2))
+        try:
+            self.query_one(f"#card-action-{self._n}", Label).update(label)
+        except NoMatches:
+            pass
+
+    def clear_action(self) -> None:
+        self.styles.background = Color(12, 12, 12)
+        self.styles.border = ("solid", Color(40, 40, 40))
+        try:
+            self.query_one(f"#card-action-{self._n}", Label).update("—")
+        except NoMatches:
+            pass
+
+
+class ContextPane(Container):
+    """Live 'what is the badge doing right now' panel — the StreamDeck profile view.
+
+    Shows the active app name (in its brand color), description, and a 4-button
+    grid where each card's glow matches the physical LED color.  Updated
+    automatically when any bridge gains or loses focus.
+    """
+
+    DEFAULT_CSS = """
+    ContextPane {
+        height: 11;
+        border: double #555555;
+        padding: 1 2;
+        margin-bottom: 1;
+    }
+    ContextPane .ctx-title-row {
+        height: 2;
+        margin-bottom: 1;
+    }
+    ContextPane .ctx-app-name {
+        color: #00cccc;
+        text-style: bold;
+        width: auto;
+    }
+    ContextPane .ctx-sep {
+        color: #555555;
+        width: 3;
+        content-align: center middle;
+    }
+    ContextPane .ctx-desc {
+        color: #888888;
+        width: 1fr;
+        content-align: left middle;
+    }
+    ContextPane #ctx-card-row {
+        height: 7;
+    }
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._cards: list[ButtonCard] = []
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(classes="ctx-title-row"):
+            yield Label("NO ACTIVE CONTEXT", classes="ctx-app-name", id="ctx-app-name")
+            yield Label("  ·  ", classes="ctx-sep")
+            yield Label(
+                "switch to an app to activate its profile",
+                classes="ctx-desc",
+                id="ctx-desc",
+            )
+        with Horizontal(id="ctx-card-row"):
+            for i in range(1, 5):
+                card = ButtonCard(i)
+                self._cards.append(card)
+                yield card
+
+    def update_page(self, page: Optional[BridgePage]) -> None:
+        """Refresh to reflect a new active page (or ``None`` = no context)."""
+        name_w = self.query_one("#ctx-app-name", Label)
+        desc_w = self.query_one("#ctx-desc", Label)
+
+        if page is None:
+            name_w.update("NO ACTIVE CONTEXT")
+            name_w.styles.color = Color(70, 70, 70)
+            desc_w.update("switch to an app to activate its profile")
+            for card in self._cards:
+                card.clear_action()
+            return
+
+        name_w.update(page.name.upper())
+        if page.brand_color:
+            r, g, b = page.brand_color
+            name_w.styles.color = Color(r, g, b)
+        else:
+            name_w.styles.color = Color(0, 200, 200)
+
+        desc_w.update(page.description or "")
+
+        for i, card in enumerate(self._cards, start=1):
+            pb = page.buttons.get(i)
+            if pb:
+                card.set_action(pb.label, pb.led)
+            else:
+                card.clear_action()
+
+
+# ---------------------------------------------------------------------------
 # Dashboard Tab
 # ---------------------------------------------------------------------------
 
 
-class LEDSwatch(Static):
-    """A small colored square showing an LED's current color."""
-
-    DEFAULT_CSS = """
-    LEDSwatch {
-        width: 6;
-        height: 3;
-        border: solid $panel-lighten-1;
-        content-align: center middle;
-        text-style: bold;
-        color: $text;
-    }
-    """
-
-    color_rgb: reactive[tuple[int, int, int]] = reactive((0, 0, 0))
-
-    def __init__(self, led_num: int) -> None:
-        super().__init__(f"L{led_num}")
-        self._led_num = led_num
-
-    def watch_color_rgb(self, value: tuple[int, int, int]) -> None:
-        r, g, b = value
-        self.styles.background = Color(r, g, b)
-
-
 class DashboardTab(Container):
-    """Tab 1: At-a-glance overview."""
+    """Tab 1: StreamDeck-companion overview — active context + badge status."""
 
     DEFAULT_CSS = """
     DashboardTab {
@@ -457,24 +588,6 @@ class DashboardTab(Container):
         width: 20;
         color: $text-muted;
     }
-    DashboardTab .status-value {
-        color: $text;
-    }
-    DashboardTab #led-swatches {
-        height: 5;
-        margin-bottom: 1;
-    }
-    DashboardTab #led-swatches Label {
-        color: $text-muted;
-        margin-bottom: 1;
-        display: block;
-    }
-    DashboardTab #swatch-row {
-        height: 3;
-    }
-    DashboardTab #swatch-row LEDSwatch {
-        margin-right: 1;
-    }
     DashboardTab #quick-actions {
         margin-top: 1;
         height: 3;
@@ -486,12 +599,6 @@ class DashboardTab(Container):
     }
     DashboardTab #quick-actions Button {
         margin-right: 1;
-    }
-    DashboardTab #recent-events {
-        margin-top: 1;
-        height: 12;
-        border: solid $panel-lighten-2;
-        padding: 0 1;
     }
     DashboardTab #recent-events-title {
         color: $accent;
@@ -506,11 +613,10 @@ class DashboardTab(Container):
         MuteState.MUTED: ("red", "MUTED"),
     }
 
-    def __init__(self) -> None:
-        super().__init__()
-        self._swatches: list[LEDSwatch] = []
-
     def compose(self) -> ComposeResult:
+        yield Label("ACTIVE PROFILE", classes="section-title")
+        yield ContextPane()
+
         yield Label("STATUS", classes="section-title")
         with Horizontal(classes="status-row"):
             yield Label("Connection:", classes="status-label")
@@ -523,15 +629,6 @@ class DashboardTab(Container):
             yield Static("NOT IN MEETING", id="mute-status")
 
         yield Rule()
-        yield Label("LED COLORS", classes="section-title")
-        with Vertical(id="led-swatches"):
-            with Horizontal(id="swatch-row"):
-                for i in range(1, 5):
-                    sw = LEDSwatch(i)
-                    self._swatches.append(sw)
-                    yield sw
-
-        yield Rule()
         yield Label("QUICK EFFECTS", classes="section-title")
         with Horizontal(id="quick-actions"):
             yield Label("Effects: ")
@@ -542,6 +639,13 @@ class DashboardTab(Container):
         yield Rule()
         yield Label("RECENT EVENTS", id="recent-events-title")
         yield RichLog(id="recent-log", max_lines=5, markup=True, highlight=False)
+
+    def update_context_page(self, page: Optional[BridgePage]) -> None:
+        """Update the context pane with the newly active page (or None)."""
+        try:
+            self.query_one(ContextPane).update_page(page)
+        except NoMatches:
+            pass
 
     def update_connection(self, connected: bool) -> None:
         w = self.query_one("#conn-status", Static)
@@ -563,11 +667,6 @@ class DashboardTab(Container):
         w = self.query_one("#mute-status", Static)
         w.update(label)
         w.styles.color = color_name
-
-    def update_led(self, n: int, r: int, g: int, b: int) -> None:
-        """Update LED swatch 1-4."""
-        if 1 <= n <= 4:
-            self._swatches[n - 1].color_rgb = (r, g, b)
 
     def push_event(self, markup: str) -> None:
         self.query_one("#recent-log", RichLog).write(markup)
@@ -1241,6 +1340,10 @@ class BadgeTUI(App):
         def on_disconnect() -> None:
             self.post_message(DisconnectMessage())
 
+        @_ts
+        def on_page_change(page) -> None:
+            self.post_message(PageChangeMessage(page))
+
         self._badge.on_button_press = on_button_press
         self._badge.on_key_reply = on_key_reply
         self._badge.on_key_ack = on_key_ack
@@ -1248,6 +1351,7 @@ class BadgeTUI(App):
         self._badge.on_chord = on_chord
         self._badge.on_connect = on_connect
         self._badge.on_disconnect = on_disconnect
+        self._badge.on_page_change = on_page_change
 
     def _update_title(self) -> None:
         status = "●" if self._badge.connected else "○"
@@ -1321,6 +1425,17 @@ class BadgeTUI(App):
         except NoMatches:
             pass
 
+    def on_page_change_message(self, event: PageChangeMessage) -> None:
+        page = event.page
+        try:
+            self.query_one(DashboardTab).update_context_page(page)
+        except NoMatches:
+            pass
+        if page is not None:
+            self._log_event(f"[cyan]◈ Profile:[/] {page.name.upper()}")
+        else:
+            self._log_event("[dim]◈ Profile: none[/]")
+
     # ------------------------------------------------------------------
     # Internal LED/effect message handlers (from tab widgets)
     # ------------------------------------------------------------------
@@ -1329,10 +1444,6 @@ class BadgeTUI(App):
     def _handle_apply_led(self, event: _ApplyLEDMessage) -> None:
         self._led_colors[event.n] = (event.r, event.g, event.b)
         self._badge.set_led(event.n, event.r, event.g, event.b)
-        try:
-            self.query_one(DashboardTab).update_led(event.n, event.r, event.g, event.b)
-        except NoMatches:
-            pass
         self._log_event(
             f"[dim]◈ LED{event.n} color:[/] "
             f"rgb({event.r}, {event.g}, {event.b})"

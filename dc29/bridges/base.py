@@ -98,11 +98,15 @@ class BridgePage:
         description: One-line human label shown in the TUI.
         buttons:     Map of button number (1–4) → :class:`PageButton`.  Only
                      buttons listed here are intercepted; others behave normally.
+        brand_color: Optional (R, G, B) color for the context-switch flash
+                     animation played when this page gains focus.  ``None``
+                     skips the animation and applies LEDs immediately.
     """
 
     name: str
     description: str = ""
     buttons: dict[int, PageButton] = field(default_factory=dict)
+    brand_color: Optional[tuple[int, int, int]] = None
 
 
 class BaseBridge(ABC):

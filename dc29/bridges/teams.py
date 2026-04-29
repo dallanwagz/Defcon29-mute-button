@@ -79,6 +79,7 @@ except ImportError as _exc:
 
 from dc29.badge import BadgeAPI
 from dc29.bridges.base import BaseBridge, BridgePage, PageButton
+from dc29.bridges.colors import BRAND_COLORS, POSITION_ACTIVE, POSITION_DIM
 from dc29.config import Config, get_config
 from dc29.protocol import MuteState
 
@@ -107,29 +108,32 @@ _TEAMS_ACTIONS: dict[str, str] = {
     "leave-call":              "leave-call",
 }
 
-# LED colors per action label (used for the idle/active state)
+# LED colors per action — positional semantics applied.
+# toggle-mute (B4) is overridden dynamically based on mute state.
 _ACTION_LEDS: dict[str, tuple[int, int, int]] = {
-    "toggle-mute":            (180, 0, 0),     # red when muted, overridden dynamically
-    "toggle-video":           (0, 60, 180),    # blue
-    "toggle-hand":            (180, 160, 0),   # yellow/amber
-    "toggle-background-blur": (100, 0, 180),   # purple
-    "leave-call":             (200, 0, 0),     # red
+    "leave-call":             POSITION_ACTIVE[1],  # warm red — destructive/exit ✓
+    "toggle-video":           POSITION_ACTIVE[2],  # cool blue — visibility/status ✓
+    "toggle-hand":            POSITION_ACTIVE[3],  # amber — raise hand / reach out ✓
+    "toggle-mute":            POSITION_ACTIVE[4],  # green baseline; overridden per state
+    "toggle-background-blur": POSITION_ACTIVE[2],  # blue — visual status family
 }
 
 
 def _build_page(button_actions: dict[int, str]) -> BridgePage:
     buttons: dict[int, PageButton] = {}
     for btn, action in button_actions.items():
-        led = _ACTION_LEDS.get(action, (60, 60, 60))
+        positional_default = POSITION_ACTIVE.get(btn, (60, 60, 60))
+        led = _ACTION_LEDS.get(action, positional_default)
         buttons[btn] = PageButton(
             label=action,
             led=led,
-            led_active=(0, 180, 0),    # green = active (e.g. video on, unmuted)
-            led_inactive=(180, 0, 0),  # red = inactive (e.g. muted, video off)
+            led_active=POSITION_ACTIVE[4],   # green = on / live / active
+            led_inactive=POSITION_ACTIVE[1],  # warm red = muted / off / inactive
         )
     return BridgePage(
         name="teams",
         description="Microsoft Teams — meeting controls",
+        brand_color=BRAND_COLORS["teams"],
         buttons=buttons,
     )
 
@@ -318,29 +322,34 @@ class TeamsBridge(BaseBridge):
         if new_state == MuteState.NOT_IN_MEETING:
             # Clear all page LEDs — button presses fall through to EEPROM
             self._clear_page_leds()
+            self._badge.set_current_page(None)
         else:
             # Light up all page buttons with their action colors
             for btn, action in self._button_actions.items():
                 if action == "toggle-mute":
+                    # Safety-critical exception to positional rule: state IS the semantics.
                     if new_state == MuteState.MUTED:
-                        self._badge.set_led(btn, 180, 0, 0)    # red = muted
+                        self._badge.set_led(btn, *POSITION_ACTIVE[1])  # warm red = muted
                     else:
-                        self._badge.set_led(btn, 0, 180, 0)    # green = live
+                        self._badge.set_led(btn, *POSITION_ACTIVE[4])  # green = live
                 elif action == "toggle-video":
                     if self._video_on:
-                        self._badge.set_led(btn, 0, 60, 180)   # blue = on
+                        self._badge.set_led(btn, *POSITION_ACTIVE[2])  # blue = on
                     else:
-                        self._badge.set_led(btn, 20, 20, 20)   # dim = off
+                        self._badge.set_led(btn, *POSITION_DIM[2])     # dim blue = off
                 elif action == "toggle-hand":
                     if self._hand_raised:
-                        self._badge.set_led(btn, 180, 160, 0)  # yellow = raised
+                        self._badge.set_led(btn, *POSITION_ACTIVE[3])  # amber = raised
                     else:
-                        self._badge.set_led(btn, 20, 20, 20)   # dim = lowered
+                        self._badge.set_led(btn, *POSITION_DIM[3])     # dim amber = lowered
                 elif action == "leave-call":
-                    self._badge.set_led(btn, 200, 0, 0)        # always red
+                    self._badge.set_led(btn, *POSITION_ACTIVE[1])      # always warm red
                 else:
-                    led = _ACTION_LEDS.get(action, (60, 60, 60))
+                    positional_default = POSITION_ACTIVE.get(btn, (60, 60, 60))
+                    led = _ACTION_LEDS.get(action, positional_default)
                     self._badge.set_led(btn, *led)
+
+            self._badge.set_current_page(self._page)
 
         label = {
             MuteState.NOT_IN_MEETING: "NOT_IN_MEETING",

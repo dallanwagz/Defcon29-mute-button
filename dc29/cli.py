@@ -440,22 +440,28 @@ def flow(
     ),
     no_button_flash: bool = typer.Option(
         False, "--no-button-flash",
-        help="Disable the white LED flash on button press.",
+        help="Disable the LED ripple animation on button press.",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Debug logging."),
 ) -> None:
-    """Run all bridges concurrently: Teams + Slack + Outlook.
+    """Run all bridges concurrently — the full context-aware shortcut experience.
 
-    This is the recommended production mode.  Buttons automatically
-    switch context based on which app is in focus:
+    Buttons automatically switch context based on which app is in focus.
+    A brief brand-color flash signals each context switch.
 
     \b
-    In a Teams meeting  → Teams page (mute / video / hand / leave call)
-    Slack in focus      → Slack page (unreads / mentions / switch / huddle)
+    In a Teams meeting  → Teams page  (mute / video / hand / leave call)
+    Slack in focus      → Slack page  (unreads / mentions / switch / huddle)
     Outlook in focus    → Outlook page (delete / reply / reply-all / forward)
+    VS Code / Cursor    → editor shortcuts (close / terminal / find / save)
+    Figma               → design shortcuts (delete / hide / find / duplicate)
+    Notion              → workspace shortcuts
+    JIRA / Linear       → issue tracker shortcuts
+    Confluence / GitHub → web app shortcuts
+    Chrome              → browser shortcuts (close / refresh / reopen / new tab)
     No special app      → normal EEPROM key macros
 
-    Priority: Teams meeting > focused app > EEPROM fallback.
+    Priority: Teams meeting > focused native app > focused web app > EEPROM fallback.
     Requires: pip install 'dc29-badge[hotkey]' for shortcut injection.
     """
     logging.basicConfig(
@@ -488,30 +494,49 @@ async def _run_flow(
     brightness: float,
     button_flash: bool,
 ) -> None:
-    """Run Teams + Slack + Outlook bridges concurrently on one badge."""
+    """Run all bridges concurrently on one badge.
+
+    Install order matters for the button hook chain: first installed = innermost
+    (lowest priority).  Teams is installed last so it wraps everything — its
+    _should_handle_button() wins whenever a meeting is active regardless of
+    which app currently has focus.
+    """
     from dc29.badge import BadgeAPI
     from dc29.bridges.teams import TeamsBridge
     from dc29.bridges.slack import SlackBridge
     from dc29.bridges.outlook import OutlookBridge
+    from dc29.bridges.generic import GenericFocusBridge
+    from dc29.bridges.registry import ALL_PAGES
 
     badge = BadgeAPI(port, brightness=brightness)
     if not button_flash:
         badge.send_raw(bytes([0x01, ord("F"), 0]))
 
-    # Install in priority order: Teams (innermost) → Slack → Outlook (outermost)
-    # Outlook wraps Slack wraps Teams; each bridge only intercepts when active.
-    teams_bridge = TeamsBridge(badge, toggle_hotkey=toggle_hotkey)
+    # Build all generic bridges from the registry
+    generic_bridges = [GenericFocusBridge(badge, page_def) for page_def in ALL_PAGES]
+
+    # Install priority (lowest first, highest last):
+    #   Generic pages → Slack → Outlook → Teams (outermost = highest priority)
     slack_bridge = SlackBridge(badge)
     outlook_bridge = OutlookBridge(badge)
+    teams_bridge = TeamsBridge(badge, toggle_hotkey=toggle_hotkey)
+
+    log = logging.getLogger(__name__)
+    log.info(
+        "Starting flow with %d app bridges + Teams + Slack + Outlook",
+        len(generic_bridges),
+    )
 
     try:
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(teams_bridge.run(),   name="teams")
+            for bridge in generic_bridges:
+                tg.create_task(bridge.run(), name=bridge.page.name)
             tg.create_task(slack_bridge.run(),   name="slack")
             tg.create_task(outlook_bridge.run(), name="outlook")
+            tg.create_task(teams_bridge.run(),   name="teams")
     except* Exception as eg:
         for exc in eg.exceptions:
-            logging.getLogger(__name__).error("Bridge error: %s", exc)
+            log.error("Bridge error: %s", exc)
     finally:
         badge.close()
 

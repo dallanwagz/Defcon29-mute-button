@@ -212,6 +212,118 @@ void led_set_color(uint8_t led, uint8_t color[3]){
 	led_set_brightness((((led-1)*3)+2), color[2]);
 }
 
+/*
+ * Button press ripple animation — two-phase design:
+ *
+ *   led_ripple_start(key)  — snapshot + splash  (call before key sends)
+ *   led_ripple_finish()    — fade + restore      (call after key sends)
+ *
+ * LED adjacency is circular: 1-2-3-4-1.  On press of button N:
+ *   pressed    → boosted +55 per channel (clamped to 255)
+ *   left/right → their stored color + 50% of pressed color (additive)
+ *                creates color surprises: red neighbor + blue press → purple
+ *   opposite   → 25% echo of pressed color (faint override)
+ *
+ * After key sends (~50-100ms), hold 40ms then 1-step crossfade, then restore.
+ * Total animation ≈ 200-250 ms.
+ *
+ * If the pressed LED is dark (no page active), falls back to a plain white
+ * flash on the pressed LED only — consistent with original behavior.
+ */
+
+static uint8_t _ripple_saved[12];  /* snapshot of all LED values before splash */
+
+void led_ripple_start(uint8_t key) {
+	if (key < 1 || key > 4) return;
+
+	/* Snapshot. */
+	for (int i = 0; i < 12; i++) _ripple_saved[i] = ledvalues[i];
+
+	uint8_t idx = (uint8_t)((key - 1) * 3);
+	uint8_t pr  = _ripple_saved[idx];
+	uint8_t pg  = _ripple_saved[idx + 1];
+	uint8_t pb  = _ripple_saved[idx + 2];
+
+	if ((pr | pg | pb) == 0) {
+		/* Dark LED — plain white flash on pressed LED; finish() will restore. */
+		uint8_t white[3] = {200, 200, 200};
+		led_set_color(key, white);
+		return;
+	}
+
+	/* Circular neighbors (1-based). */
+	uint8_t left  = (uint8_t)(((key - 1 + 3) % 4) + 1);
+	uint8_t right = (uint8_t)((key % 4) + 1);
+	uint8_t opp   = (uint8_t)(((key - 1 + 2) % 4) + 1);
+
+	/* Pressed: boost +55 each channel, clamped. */
+	{
+		uint8_t f[3] = {
+			(uint8_t)(pr > 200 ? 255 : pr + 55),
+			(uint8_t)(pg > 200 ? 255 : pg + 55),
+			(uint8_t)(pb > 200 ? 255 : pb + 55)
+		};
+		led_set_color(key, f);
+	}
+
+	/* Left neighbor: additive blend — their color + half of pressed. */
+	{
+		uint8_t li = (uint8_t)((left - 1) * 3);
+		uint8_t c[3] = {
+			(uint8_t)(_ripple_saved[li]   + (pr >> 1) > 255 ? 255 : _ripple_saved[li]   + (pr >> 1)),
+			(uint8_t)(_ripple_saved[li+1] + (pg >> 1) > 255 ? 255 : _ripple_saved[li+1] + (pg >> 1)),
+			(uint8_t)(_ripple_saved[li+2] + (pb >> 1) > 255 ? 255 : _ripple_saved[li+2] + (pb >> 1))
+		};
+		led_set_color(left, c);
+	}
+
+	/* Right neighbor: same additive blend. */
+	{
+		uint8_t ri = (uint8_t)((right - 1) * 3);
+		uint8_t c[3] = {
+			(uint8_t)(_ripple_saved[ri]   + (pr >> 1) > 255 ? 255 : _ripple_saved[ri]   + (pr >> 1)),
+			(uint8_t)(_ripple_saved[ri+1] + (pg >> 1) > 255 ? 255 : _ripple_saved[ri+1] + (pg >> 1)),
+			(uint8_t)(_ripple_saved[ri+2] + (pb >> 1) > 255 ? 255 : _ripple_saved[ri+2] + (pb >> 1))
+		};
+		led_set_color(right, c);
+	}
+
+	/* Opposite: faint echo — 25% of pressed color. */
+	{
+		uint8_t echo[3] = {(uint8_t)(pr >> 2), (uint8_t)(pg >> 2), (uint8_t)(pb >> 2)};
+		led_set_color(opp, echo);
+	}
+}
+
+void led_ripple_finish(void) {
+	extern volatile uint32_t millis;
+	extern uint32_t lastUSBSendTime;
+
+	/* Hold 40ms post-send so the splash reads as intentional, not a glitch. */
+	lastUSBSendTime = millis;
+	while (millis - lastUSBSendTime < 40);
+
+	/* Crossfade step: midpoint between current ripple state and saved. */
+	for (int led = 1; led <= 4; led++) {
+		uint8_t ci = (uint8_t)((led - 1) * 3);
+		uint8_t mid[3] = {
+			(uint8_t)((ledvalues[ci]   + _ripple_saved[ci])   >> 1),
+			(uint8_t)((ledvalues[ci+1] + _ripple_saved[ci+1]) >> 1),
+			(uint8_t)((ledvalues[ci+2] + _ripple_saved[ci+2]) >> 1)
+		};
+		led_set_color(led, mid);
+	}
+	lastUSBSendTime = millis;
+	while (millis - lastUSBSendTime < 35);
+
+	/* Full restore. */
+	for (int led = 1; led <= 4; led++) {
+		uint8_t ci = (uint8_t)((led - 1) * 3);
+		uint8_t restore[3] = {_ripple_saved[ci], _ripple_saved[ci+1], _ripple_saved[ci+2]};
+		led_set_color(led, restore);
+	}
+}
+
 void buzzer_on(void){
 	tcc_set_compare_value(&tcc2_instance, 0, 64);
 

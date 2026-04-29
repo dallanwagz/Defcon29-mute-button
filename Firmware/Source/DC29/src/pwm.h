@@ -49,4 +49,12 @@ void buzzer_off(void);
 
 void buzzer_set_value(uint8_t value);
 
+/* Button press ripple animation — call led_ripple_start() before sending keys,
+ * led_ripple_finish() after.  Bright-flashes the pressed LED and additively
+ * bleeds its color into adjacent LEDs (creating color-mix surprises), then
+ * cross-fades everything back to stored values over ~75ms.
+ * Falls back to a plain white flash when the pressed LED has no color. */
+void led_ripple_start(uint8_t key);
+void led_ripple_finish(void);
+
 #endif /* PWM_H_ */
