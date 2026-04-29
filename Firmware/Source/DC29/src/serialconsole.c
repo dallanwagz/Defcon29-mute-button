@@ -24,6 +24,7 @@ static uint8_t newKeymap[230];
      0x01 X          -> LED 4 off  (clear)
      0x01 K n m k    -> set button n (1-6) to single key: modifier m, keycode k
      0x01 Q n        -> query button n; badge replies 0x01 R n m k
+     0x01 L n r g b  -> set LED n (1-4) color immediately (not saved to EEPROM)
    Commands from badge to host:
      0x01 B n m k    -> button n was pressed; first keymap entry is modifier m, keycode k
      0x01 R n m k    -> reply to Q query
@@ -32,7 +33,7 @@ static uint8_t newKeymap[230];
 #define STATUS_ESCAPE 0x01
 static uint8_t escape_state = 0;  /* 0=idle 1=awaiting_cmd 2=collecting_args */
 static uint8_t escape_cmd = 0;
-static uint8_t escape_args[3];
+static uint8_t escape_args[4];    /* max 4 args (L command: n r g b) */
 static uint8_t escape_args_count = 0;
 static uint8_t escape_args_needed = 0;
 
@@ -124,6 +125,7 @@ void updateSerialConsole(void){
 				if(data == 'X'){ led_set_color(4, LED_COLOR_OFF); return; }
 				if(data == 'K'){ escape_args_needed = 3; escape_state = 2; return; }
 				if(data == 'Q'){ escape_args_needed = 1; escape_state = 2; return; }
+				if(data == 'L'){ escape_args_needed = 4; escape_state = 2; return; }
 				return;
 			}
 			if(escape_state == 2){
@@ -139,6 +141,12 @@ void updateSerialConsole(void){
 						uint8_t qkc  = keymap[keymapstarts[btn-1]+2];
 						uint8_t reply[5] = {0x01, 'R', btn, qmod, qkc};
 						udi_cdc_write_buf(reply, 5);
+					}
+				} else if(escape_cmd == 'L'){
+					uint8_t n = escape_args[0];
+					if(n >= 1 && n <= 4){
+						uint8_t color[3] = {escape_args[1], escape_args[2], escape_args[3]};
+						led_set_color(n, color);
 					}
 				}
 				return;
