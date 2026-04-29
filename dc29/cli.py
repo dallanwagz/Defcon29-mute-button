@@ -327,6 +327,196 @@ async def _run_teams_supervise(
 
 
 # ---------------------------------------------------------------------------
+# slack command
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def slack(
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Debug logging."),
+) -> None:
+    """Run the Slack productivity bridge (headless service).
+
+    Activates 4 Slack shortcuts when the Slack desktop app has focus.
+    Shortcuts are injected as keyboard events (requires pynput).
+
+    \b
+    Button 1 — All Unreads       (blue)
+    Button 2 — Mentions          (purple)
+    Button 3 — Quick Switcher    (cyan)
+    Button 4 — Toggle Huddle     (green)
+
+    Configurable in ~/.config/dc29/config.toml under [slack.buttons]
+    and [slack.colors].  Requires: pip install 'dc29-badge[hotkey]'
+    """
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    from dc29.badge import BadgeAPI
+    from dc29.bridges.slack import SlackBridge
+    from dc29.config import get_config
+
+    cfg = get_config()
+    badge = BadgeAPI(_resolve_port(port or cfg.badge_port), brightness=cfg.badge_brightness)
+    try:
+        asyncio.run(SlackBridge(badge).run())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        badge.close()
+
+
+# ---------------------------------------------------------------------------
+# outlook command
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def outlook(
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Debug logging."),
+) -> None:
+    """Run the Outlook email bridge (headless service).
+
+    Activates 4 Outlook shortcuts when Outlook has focus.  Button 1 is
+    Delete — bright red, with a satisfying LED pulse after each press.
+
+    \b
+    Button 1 — Delete email    (red — with satisfaction pulse)
+    Button 2 — Reply           (blue)
+    Button 3 — Reply All       (yellow)
+    Button 4 — Forward         (purple)
+
+    Configurable in ~/.config/dc29/config.toml under [outlook.buttons]
+    and [outlook.colors] (including 'pulse' key for the animation color).
+    Requires: pip install 'dc29-badge[hotkey]'
+    """
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    from dc29.badge import BadgeAPI
+    from dc29.bridges.outlook import OutlookBridge
+    from dc29.config import get_config
+
+    cfg = get_config()
+    badge = BadgeAPI(_resolve_port(port or cfg.badge_port), brightness=cfg.badge_brightness)
+    try:
+        asyncio.run(OutlookBridge(badge).run())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        badge.close()
+
+
+# ---------------------------------------------------------------------------
+# flow command — run Teams + Slack + Outlook concurrently
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def flow(
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+    hotkey: Optional[str] = typer.Option(
+        None, "--toggle-hotkey",
+        help="Global hotkey for Teams mute toggle (pynput format).",
+        envvar="DC29_TOGGLE_HOTKEY",
+    ),
+    no_button_flash: bool = typer.Option(
+        False, "--no-button-flash",
+        help="Disable the white LED flash on button press.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Debug logging."),
+) -> None:
+    """Run all bridges concurrently: Teams + Slack + Outlook.
+
+    This is the recommended production mode.  Buttons automatically
+    switch context based on which app is in focus:
+
+    \b
+    In a Teams meeting  → Teams page (mute / video / hand / leave call)
+    Slack in focus      → Slack page (unreads / mentions / switch / huddle)
+    Outlook in focus    → Outlook page (delete / reply / reply-all / forward)
+    No special app      → normal EEPROM key macros
+
+    Priority: Teams meeting > focused app > EEPROM fallback.
+    Requires: pip install 'dc29-badge[hotkey]' for shortcut injection.
+    """
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    from dc29.config import get_config
+
+    cfg = get_config()
+    resolved_port = _resolve_port(port or cfg.badge_port)
+    resolved_hotkey = hotkey if hotkey is not None else cfg.teams_toggle_hotkey
+
+    try:
+        asyncio.run(
+            _run_flow(
+                port=resolved_port,
+                toggle_hotkey=resolved_hotkey or None,
+                brightness=cfg.badge_brightness,
+                button_flash=not no_button_flash,
+            )
+        )
+    except KeyboardInterrupt:
+        pass
+
+
+async def _run_flow(
+    port: str,
+    toggle_hotkey: Optional[str],
+    brightness: float,
+    button_flash: bool,
+) -> None:
+    """Run Teams + Slack + Outlook bridges concurrently on one badge."""
+    from dc29.badge import BadgeAPI
+    from dc29.bridges.teams import TeamsBridge
+    from dc29.bridges.slack import SlackBridge
+    from dc29.bridges.outlook import OutlookBridge
+
+    badge = BadgeAPI(port, brightness=brightness)
+    if not button_flash:
+        badge.send_raw(bytes([0x01, ord("F"), 0]))
+
+    # Install in priority order: Teams (innermost) → Slack → Outlook (outermost)
+    # Outlook wraps Slack wraps Teams; each bridge only intercepts when active.
+    teams_bridge = TeamsBridge(badge, toggle_hotkey=toggle_hotkey)
+    slack_bridge = SlackBridge(badge)
+    outlook_bridge = OutlookBridge(badge)
+
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(teams_bridge.run(),   name="teams")
+            tg.create_task(slack_bridge.run(),   name="slack")
+            tg.create_task(outlook_bridge.run(), name="outlook")
+    except* Exception as eg:
+        for exc in eg.exceptions:
+            logging.getLogger(__name__).error("Bridge error: %s", exc)
+    finally:
+        badge.close()
+
+
+# ---------------------------------------------------------------------------
 # set-key command
 # ---------------------------------------------------------------------------
 

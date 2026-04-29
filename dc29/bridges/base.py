@@ -152,6 +152,18 @@ class BaseBridge(ABC):
     # Lifecycle helpers — call from subclass run()
     # ------------------------------------------------------------------
 
+    def _should_handle_button(self, btn: int) -> bool:
+        """Return True if this bridge should intercept a button press right now.
+
+        Default: always intercept owned buttons.  Override to add conditions
+        (e.g. :class:`TeamsBridge` only intercepts while in a meeting;
+        :class:`FocusBridge` only intercepts while its app is focused).
+
+        Args:
+            btn: Button number (1–4).
+        """
+        return True
+
     def _install_button_hook(self) -> None:
         """Intercept badge button-press events for buttons in :attr:`page`."""
         self._loop = asyncio.get_running_loop()
@@ -160,7 +172,7 @@ class BaseBridge(ABC):
         owned = set(self.page.buttons.keys())
 
         def _on_button(btn: int, mod: int, kc: int) -> None:
-            if btn in owned:
+            if btn in owned and self._should_handle_button(btn):
                 self._loop.call_soon_threadsafe(
                     asyncio.ensure_future,
                     self.handle_button(btn),

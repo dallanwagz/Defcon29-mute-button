@@ -181,6 +181,9 @@ class TeamsBridge(BaseBridge):
     def page(self) -> BridgePage:
         return self._page
 
+    def _should_handle_button(self, btn: int) -> bool:
+        return self._in_meeting
+
     async def handle_button(self, btn: int) -> None:
         """Enqueue the Teams action bound to *btn*."""
         action = self._button_actions.get(btn)

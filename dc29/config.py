@@ -13,30 +13,41 @@ Example ``config.toml``::
 
     [teams]
     toggle_hotkey = "<ctrl>+<alt>+m"
-    # Which button does which Teams action in a meeting.
-    # Values: toggle-mute | toggle-video | toggle-hand |
-    #         toggle-background-blur | leave-call
     [teams.buttons]
     1 = "leave-call"
     2 = "toggle-video"
     3 = "toggle-hand"
     4 = "toggle-mute"
 
-    [slack]
-    # Slack shortcuts are injected as HID keycodes (requires pynput).
-    # Values: toggle-mute | toggle-video | leave-call | raise-hand
     [slack.buttons]
-    1 = "leave-call"
-    2 = "toggle-video"
-    3 = "raise-hand"
-    4 = "toggle-mute"
+    1 = "all-unreads"
+    2 = "mentions"
+    3 = "quick-switch"
+    4 = "huddle"
+    [slack.colors]
+    all-unreads  = "0,60,200"
+    mentions     = "120,0,200"
+    quick-switch = "0,180,160"
+    huddle       = "0,160,0"
+
+    [outlook.buttons]
+    1 = "delete"
+    2 = "reply"
+    3 = "reply-all"
+    4 = "forward"
+    [outlook.colors]
+    delete    = "220,0,0"
+    reply     = "0,60,180"
+    reply-all = "180,160,0"
+    forward   = "100,0,180"
+    pulse     = "255,0,0"
 """
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 # Use tomllib (stdlib, 3.11+) or fallback to tomli (pip install tomli)
 try:
@@ -60,22 +71,28 @@ _DEFAULTS: dict[str, Any] = {
     },
     "teams": {
         "toggle_hotkey": None,
-        "buttons": {
-            1: "leave-call",
-            2: "toggle-video",
-            3: "toggle-hand",
-            4: "toggle-mute",
-        },
+        "buttons": {1: "leave-call", 2: "toggle-video", 3: "toggle-hand", 4: "toggle-mute"},
     },
     "slack": {
-        "buttons": {
-            1: "leave-call",
-            2: "toggle-video",
-            3: "raise-hand",
-            4: "toggle-mute",
-        },
+        "buttons": {1: "all-unreads", 2: "mentions", 3: "quick-switch", 4: "huddle"},
+        "colors": {},
+    },
+    "outlook": {
+        "buttons": {1: "delete", 2: "reply", 3: "reply-all", 4: "forward"},
+        "colors": {},
     },
 }
+
+
+def _parse_color(s: str) -> Optional[tuple[int, int, int]]:
+    """Parse 'r,g,b' string → (r, g, b) or None on failure."""
+    try:
+        parts = [int(x.strip()) for x in s.split(",")]
+        if len(parts) == 3 and all(0 <= v <= 255 for v in parts):
+            return (parts[0], parts[1], parts[2])
+    except (ValueError, AttributeError):
+        pass
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -88,10 +105,9 @@ class Config:
     Usage::
 
         cfg = Config.load()
-        port = cfg.badge_port          # None if not set
-        brightness = cfg.badge_brightness
-        hotkey = cfg.teams_toggle_hotkey
-        actions = cfg.teams_button_actions  # {1: "leave-call", ...}
+        port = cfg.badge_port
+        actions = cfg.teams_button_actions   # {1: "leave-call", ...}
+        colors  = cfg.slack_led_colors       # {action: (r,g,b), ...}
     """
 
     def __init__(self, raw: dict[str, Any]) -> None:
@@ -130,12 +146,10 @@ class Config:
 
     @property
     def badge_port(self) -> str | None:
-        """Serial port path, or ``None`` to auto-detect."""
         return self._raw.get("badge", {}).get("port") or None
 
     @property
     def badge_brightness(self) -> float:
-        """Global LED brightness scalar in [0.0, 1.0]."""
         v = self._raw.get("badge", {}).get("brightness", 1.0)
         return max(0.0, min(1.0, float(v)))
 
@@ -145,16 +159,10 @@ class Config:
 
     @property
     def teams_toggle_hotkey(self) -> str | None:
-        """pynput hotkey string for Teams mute toggle, or ``None``."""
         return self._raw.get("teams", {}).get("toggle_hotkey") or None
 
     @property
     def teams_button_actions(self) -> dict[int, str]:
-        """Map of button number (1–4) → Teams API action string.
-
-        Valid actions: ``toggle-mute``, ``toggle-video``, ``toggle-hand``,
-        ``toggle-background-blur``, ``leave-call``.
-        """
         defaults = dict(_DEFAULTS["teams"]["buttons"])
         raw_btns = self._raw.get("teams", {}).get("buttons", {})
         for k, v in raw_btns.items():
@@ -167,21 +175,64 @@ class Config:
 
     @property
     def slack_button_actions(self) -> dict[int, str]:
-        """Map of button number (1–4) → Slack shortcut action string."""
         defaults = dict(_DEFAULTS["slack"]["buttons"])
         raw_btns = self._raw.get("slack", {}).get("buttons", {})
         for k, v in raw_btns.items():
             defaults[int(k)] = str(v)
         return defaults
 
+    @property
+    def slack_led_colors(self) -> dict[str, tuple[int, int, int]]:
+        """Map of action name → (r, g, b) color overrides from config."""
+        result: dict[str, tuple[int, int, int]] = {}
+        for action, val in self._raw.get("slack", {}).get("colors", {}).items():
+            color = _parse_color(str(val))
+            if color:
+                result[str(action)] = color
+        return result
+
+    # ------------------------------------------------------------------
+    # Outlook section
+    # ------------------------------------------------------------------
+
+    @property
+    def outlook_button_actions(self) -> dict[int, str]:
+        defaults = dict(_DEFAULTS["outlook"]["buttons"])
+        raw_btns = self._raw.get("outlook", {}).get("buttons", {})
+        for k, v in raw_btns.items():
+            defaults[int(k)] = str(v)
+        return defaults
+
+    @property
+    def outlook_led_colors(self) -> dict[str, tuple[int, int, int]]:
+        """Map of action name → (r, g, b) color overrides from config."""
+        result: dict[str, tuple[int, int, int]] = {}
+        raw = self._raw.get("outlook", {}).get("colors", {})
+        for action, val in raw.items():
+            if action == "pulse":
+                continue
+            color = _parse_color(str(val))
+            if color:
+                result[str(action)] = color
+        return result
+
+    @property
+    def outlook_pulse_color(self) -> Optional[tuple[int, int, int]]:
+        """RGB color for the Outlook delete satisfaction pulse."""
+        raw = self._raw.get("outlook", {}).get("colors", {}).get("pulse")
+        if raw:
+            return _parse_color(str(raw))
+        return None
+
     # ------------------------------------------------------------------
     # Serialization
     # ------------------------------------------------------------------
 
     def as_toml(self) -> str:
-        """Render the *effective* (defaults + overrides) config as a TOML string."""
+        """Render the effective (defaults + overrides) config as a TOML string."""
         teams_btns = self.teams_button_actions
         slack_btns = self.slack_button_actions
+        outlook_btns = self.outlook_button_actions
         lines = [
             "[badge]",
             f'port       = "{self.badge_port or ""}"',
@@ -194,12 +245,32 @@ class Config:
         ]
         for btn, action in sorted(teams_btns.items()):
             lines.append(f'{btn} = "{action}"')
-        lines += [
-            "",
-            "[slack.buttons]",
-        ]
+        lines += ["", "[slack.buttons]"]
         for btn, action in sorted(slack_btns.items()):
             lines.append(f'{btn} = "{action}"')
+        lines += [
+            "",
+            "# Slack LED colors (r,g,b per action)",
+            "# [slack.colors]",
+            '# all-unreads  = "0,60,200"',
+            '# mentions     = "120,0,200"',
+            '# quick-switch = "0,180,160"',
+            '# huddle       = "0,160,0"',
+            "",
+            "[outlook.buttons]",
+        ]
+        for btn, action in sorted(outlook_btns.items()):
+            lines.append(f'{btn} = "{action}"')
+        lines += [
+            "",
+            "# Outlook LED colors and delete-pulse color (r,g,b)",
+            "# [outlook.colors]",
+            '# delete    = "220,0,0"',
+            '# reply     = "0,60,180"',
+            '# reply-all = "180,160,0"',
+            '# forward   = "100,0,180"',
+            '# pulse     = "255,0,0"   # delete satisfaction pulse',
+        ]
         return "\n".join(lines) + "\n"
 
 
