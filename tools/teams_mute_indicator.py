@@ -143,6 +143,7 @@ class BadgeWriter:
         self._rx_cmd = 0
         self._rx_args: list[int] = []
         self._rx_args_needed = 0
+        self.on_button4_press: "Callable[[], None] | None" = None
 
     def _ensure_open(self) -> None:
         if self._serial is None or not self._serial.is_open:
@@ -200,6 +201,8 @@ class BadgeWriter:
         if cmd == 'B' and len(args) == 3:
             logging.info("Badge button %d pressed → modifier=0x%02X keycode=0x%02X",
                          args[0], args[1], args[2])
+            if args[0] == 4 and self.on_button4_press is not None:
+                self.on_button4_press()
         elif cmd == 'R' and len(args) == 3:
             logging.info("Badge button %d keymap: modifier=0x%02X keycode=0x%02X",
                          args[0], args[1], args[2])
@@ -499,6 +502,9 @@ async def supervise(
     toggle_queue: asyncio.Queue = asyncio.Queue()
     tracker = _MeetingTracker()
 
+    loop = asyncio.get_running_loop()
+    badge.on_button4_press = lambda: loop.call_soon_threadsafe(toggle_queue.put_nowait, True)
+
     hotkey_listener = None
     if toggle_hotkey:
         if not _PYNPUT_AVAILABLE:
@@ -506,8 +512,6 @@ async def supervise(
                 "pynput not installed — toggle hotkey disabled. Run: pip install pynput"
             )
         else:
-            loop = asyncio.get_running_loop()
-
             def _on_hotkey() -> None:
                 loop.call_soon_threadsafe(toggle_queue.put_nowait, True)
 
