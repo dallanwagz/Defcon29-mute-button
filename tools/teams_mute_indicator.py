@@ -90,6 +90,11 @@ CMD_MUTED = ESCAPE + b"M"
 CMD_UNMUTED = ESCAPE + b"U"
 CMD_CLEAR = ESCAPE + b"X"
 
+# LED 4 colors for mute states (pre-brightness-scaling).
+COLOR_MUTED   = (255, 0,   0)
+COLOR_UNMUTED = (0,   255, 0)
+COLOR_CLEAR   = (0,   0,   0)
+
 RECONNECT_DELAY_SECONDS = 5
 
 # Hotkey the badge button 4 should send (pynput format).
@@ -134,8 +139,9 @@ class BadgeWriter:
       0x01 A n          — ACK for a K set-keymap command
     """
 
-    def __init__(self, port_name: str) -> None:
+    def __init__(self, port_name: str, brightness: float = 1.0) -> None:
         self.port_name = port_name
+        self.brightness = max(0.0, min(1.0, brightness))
         self._serial = None
         self._last_cmd = None
         self._lock = threading.Lock()
@@ -258,7 +264,9 @@ class BadgeWriter:
 
     def set_led(self, n: int, r: int, g: int, b: int) -> None:
         """Set LED n (1-4) color immediately. Not saved to EEPROM."""
-        cmd = bytes([0x01, ord('L'), n & 0xFF, r & 0xFF, g & 0xFF, b & 0xFF])
+        s = self.brightness
+        cmd = bytes([0x01, ord('L'), n & 0xFF,
+                     int(r * s) & 0xFF, int(g * s) & 0xFF, int(b * s) & 0xFF])
         with self._lock:
             try:
                 self._ensure_open()
@@ -415,13 +423,11 @@ def parse_color(value: str) -> Color:
     )
 
 
-def state_to_command(meeting_state: dict | None) -> bytes:
-    """Map a Teams meetingState dict to the corresponding badge command."""
-    if not meeting_state:
-        return CMD_CLEAR
-    if not meeting_state.get("isInMeeting"):
-        return CMD_CLEAR
-    return CMD_MUTED if meeting_state.get("isMuted") else CMD_UNMUTED
+def state_to_color(meeting_state: dict | None) -> tuple:
+    """Map a Teams meetingState dict to the LED 4 RGB color."""
+    if not meeting_state or not meeting_state.get("isInMeeting"):
+        return COLOR_CLEAR
+    return COLOR_MUTED if meeting_state.get("isMuted") else COLOR_UNMUTED
 
 
 class _MeetingTracker:
@@ -511,10 +517,10 @@ async def run_once(
                                 animator.stop()       # entering a meeting
                             elif not tracker.is_in_meeting and was_in_meeting:
                                 _start_idle()         # leaving a meeting
-                    cmd = state_to_command(state)
-                    label = {CMD_MUTED: "MUTED", CMD_UNMUTED: "UNMUTED", CMD_CLEAR: "CLEAR"}[cmd]
+                    color = state_to_color(state)
+                    label = {COLOR_MUTED: "MUTED", COLOR_UNMUTED: "UNMUTED", COLOR_CLEAR: "CLEAR"}.get(color, "UNKNOWN")
                     logging.info("State -> %s", label)
-                    badge.write(cmd)
+                    badge.set_led(4, *color)
         finally:
             if animator:
                 animator.stop()
@@ -529,9 +535,10 @@ async def supervise(
     idle_animation: str | None = None,
     idle_color: Color = (0, 200, 255),
     idle_speed: int = 150,
+    brightness: float = 1.0,
 ) -> None:
-    badge = BadgeWriter(port_name)
-    badge.write(CMD_CLEAR)
+    badge = BadgeWriter(port_name, brightness=brightness)
+    badge.set_led(4, *COLOR_CLEAR)
     badge.query_keymap(4)  # log button 4's configured keymap at startup
 
     animator = LedAnimator(badge) if idle_animation else None
@@ -572,7 +579,7 @@ async def supervise(
                 logging.warning("Disconnected: %s. Reconnecting in %ds...", exc, RECONNECT_DELAY_SECONDS)
             except Exception as exc:
                 logging.exception("Unexpected error: %s. Reconnecting in %ds...", exc, RECONNECT_DELAY_SECONDS)
-            badge.write(CMD_CLEAR)
+            badge.set_led(4, *COLOR_CLEAR)
             tracker.is_in_meeting = False
             await asyncio.sleep(RECONNECT_DELAY_SECONDS)
     finally:
@@ -618,6 +625,13 @@ def main() -> int:
         metavar="MS",
         help="Animation step duration in milliseconds. Default: 150",
     )
+    parser.add_argument(
+        "--brightness",
+        type=float,
+        default=1.0,
+        metavar="LEVEL",
+        help="LED brightness from 0.0 (off) to 1.0 (full). Applies to all LEDs. Default: 1.0",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -633,6 +647,7 @@ def main() -> int:
             idle_animation=args.idle_animation,
             idle_color=args.idle_color,
             idle_speed=args.idle_speed,
+            brightness=args.brightness,
         ))
     except KeyboardInterrupt:
         return 0
