@@ -67,3 +67,53 @@ button** booted the firmware cleanly.
 If the firmware appears not to boot after a flash, **before** debugging the
 build, unplug and replug without touching any button. The firmware is almost
 certainly fine.
+
+---
+
+## Validation Run — Playground Cleanup Build (2026-04-28, Windows)
+
+Built and on-badge boot-verified the playground branch after the firmware
+cleanup + brightness/animation/keymap-default work landed.
+
+**Built from:** `playground` @ `9874a7c` (Rewrite WINDOWS_BUILD_HANDOFF.md…),
+which is 8 commits past the previous validated tip (`2db486f`).
+
+**Build environment:**
+- Microchip Studio 7.0 toolchain (arm-none-eabi-gcc 6.3.1).
+- Built via `make all` against the auto-generated
+  `Firmware/Source/DC29/Release/Makefile` — no GUI build needed since the
+  Makefile was already present from a prior solution open. The Makefile
+  needed local-only patching to drop references to `games.c/games.h`
+  (deleted in the cleanup commit but still listed in the stale Makefile);
+  Microchip Studio would regenerate this correctly on next solution open.
+- Upstream commit `33ff6b6` ("Fix DC29.cproj: correct chip symbol and
+  linker script in first Release PropertyGroup") absorbed the previous
+  local-only cproj edits, so the cproj is now committed-correct on
+  `playground`. No cproj patching needed for this build.
+
+**Build size:** 38,812 bytes text + 5,380 bytes BSS. ~67.7% of the 56 KB
+application slot — comfortable headroom.
+
+**UF2 conversion:** Used the official microsoft/uf2 `uf2conv.py` (Python
+3.14 on the build machine). Requires `uf2families.json` in the same
+directory as the script. Output: `DC29.uf2`, 77,824 bytes, start
+`0x2000`. No PowerShell port needed.
+
+**On-badge verification (Windows side):**
+- Flashed cleanly via DFU (held BUTTON4, plugged USB, released on
+  drive-letter appearance, dragged UF2).
+- Badge rebooted into new firmware; red → green → blue LED chase across
+  all 4 LEDs at boot.
+- CDC COM port enumerated.
+
+**Pending — Mac side:** Per the WINDOWS_BUILD_HANDOFF.md "After flashing"
+section, the keymap-default + button-press path still needs to be
+confirmed by reloading the launchd service and watching
+`/tmp/dc29-teams-mute.err` for:
+- Startup line: `Badge button 4 keymap: modifier=0x05 keycode=0x10`
+- Per-press line: `Badge button 4 pressed → modifier=0x05 keycode=0x10`
+
+If the startup keymap line shows different values, the
+`FIRMWARE_VERSION` bump from 1 → 2 may have triggered `reset_eeprom()` to
+something other than the expected default; fall back to the manual `K`
+command (Python REPL snippet at the bottom of WINDOWS_BUILD_HANDOFF.md).
