@@ -52,6 +52,8 @@ import json
 import logging
 import os
 import sys
+import threading
+import time
 from contextlib import suppress
 from pathlib import Path
 
@@ -123,34 +125,132 @@ def build_url(token: str) -> str:
 
 
 class BadgeWriter:
-    """Owns the serial port and survives reopen on transient USB drops."""
+    """Owns the serial port and survives reopen on transient USB drops.
+
+    Runs a background reader thread that parses badge→host escape events:
+      0x01 B n mod key  — button n was pressed (logs modifier + keycode)
+      0x01 R n mod key  — reply to a Q query
+      0x01 A n          — ACK for a K set-keymap command
+    """
 
     def __init__(self, port_name: str) -> None:
         self.port_name = port_name
         self._serial = None
         self._last_cmd = None
+        self._lock = threading.Lock()
+        self._reader_thread: threading.Thread | None = None
+        self._rx_state = 0  # 0=idle 1=got_escape 2=collecting_args
+        self._rx_cmd = 0
+        self._rx_args: list[int] = []
+        self._rx_args_needed = 0
 
     def _ensure_open(self) -> None:
         if self._serial is None or not self._serial.is_open:
-            self._serial = serial.Serial(self.port_name, 9600, timeout=1)
+            self._serial = serial.Serial(self.port_name, 9600, timeout=0.1)
+            self._start_reader()
+
+    def _start_reader(self) -> None:
+        if self._reader_thread is None or not self._reader_thread.is_alive():
+            t = threading.Thread(target=self._reader_loop, daemon=True)
+            t.start()
+            self._reader_thread = t
+
+    def _reader_loop(self) -> None:
+        while True:
+            try:
+                ser = self._serial
+                if ser and ser.is_open:
+                    b = ser.read(1)
+                    if b:
+                        self._parse_rx(b[0])
+                else:
+                    time.sleep(0.1)
+            except (serial.SerialException, OSError):
+                break
+            except Exception:
+                break
+
+    def _parse_rx(self, b: int) -> None:
+        if self._rx_state == 0:
+            if b == 0x01:
+                self._rx_state = 1
+        elif self._rx_state == 1:
+            self._rx_cmd = b
+            self._rx_args = []
+            if b == ord('B'):
+                self._rx_args_needed = 3
+                self._rx_state = 2
+            elif b == ord('A'):
+                self._rx_args_needed = 1
+                self._rx_state = 2
+            elif b == ord('R'):
+                self._rx_args_needed = 3
+                self._rx_state = 2
+            else:
+                self._rx_state = 0
+        elif self._rx_state == 2:
+            self._rx_args.append(b)
+            if len(self._rx_args) >= self._rx_args_needed:
+                self._dispatch_rx()
+                self._rx_state = 0
+
+    def _dispatch_rx(self) -> None:
+        cmd = chr(self._rx_cmd)
+        args = self._rx_args
+        if cmd == 'B' and len(args) == 3:
+            logging.info("Badge button %d pressed → modifier=0x%02X keycode=0x%02X",
+                         args[0], args[1], args[2])
+        elif cmd == 'R' and len(args) == 3:
+            logging.info("Badge button %d keymap: modifier=0x%02X keycode=0x%02X",
+                         args[0], args[1], args[2])
+        elif cmd == 'A' and len(args) == 1:
+            logging.info("Badge ACK: keymap set for button %d", args[0])
+
+    def _close(self) -> None:
+        try:
+            if self._serial:
+                self._serial.close()
+        except Exception:
+            pass
+        self._serial = None
+        self._last_cmd = None
 
     def write(self, cmd: bytes) -> None:
-        if cmd == self._last_cmd:
-            return
-        try:
-            self._ensure_open()
-            self._serial.write(cmd)
-            self._serial.flush()
-            self._last_cmd = cmd
-        except (serial.SerialException, OSError) as exc:
-            logging.warning("Badge write failed: %s. Will retry on next update.", exc)
+        with self._lock:
+            if cmd == self._last_cmd:
+                return
             try:
-                if self._serial:
-                    self._serial.close()
-            except Exception:
-                pass
-            self._serial = None
-            self._last_cmd = None
+                self._ensure_open()
+                self._serial.write(cmd)
+                self._serial.flush()
+                self._last_cmd = cmd
+            except (serial.SerialException, OSError) as exc:
+                logging.warning("Badge write failed: %s. Will retry on next update.", exc)
+                self._close()
+
+    def set_keymap(self, button: int, modifier: int, keycode: int) -> None:
+        """Write a single-key macro for button (1-6) directly to badge EEPROM."""
+        cmd = bytes([0x01, ord('K'), button & 0xFF, modifier & 0xFF, keycode & 0xFF])
+        with self._lock:
+            try:
+                self._ensure_open()
+                self._serial.write(cmd)
+                self._serial.flush()
+            except (serial.SerialException, OSError) as exc:
+                logging.warning("Badge set_keymap failed: %s", exc)
+                self._close()
+
+    def query_keymap(self, button: int) -> None:
+        """Ask the badge to report the current keymap for button (1-6)."""
+        cmd = bytes([0x01, ord('Q'), button & 0xFF])
+        with self._lock:
+            try:
+                self._ensure_open()
+                self._serial.write(cmd)
+                self._serial.flush()
+            except (serial.SerialException, OSError) as exc:
+                logging.warning("Badge query_keymap failed: %s", exc)
+                self._close()
 
 
 def state_to_command(meeting_state: dict | None) -> bytes:
@@ -236,6 +336,7 @@ async def run_once(badge: BadgeWriter, toggle_queue: asyncio.Queue, tracker: _Me
 async def supervise(port_name: str, toggle_hotkey: str | None) -> None:
     badge = BadgeWriter(port_name)
     badge.write(CMD_CLEAR)
+    badge.query_keymap(4)  # log button 4's configured keymap at startup
 
     toggle_queue: asyncio.Queue = asyncio.Queue()
     tracker = _MeetingTracker()
