@@ -126,6 +126,7 @@ static uint32_t   chord_start = 0;
 static uint8_t    effect_step = 0;
 static uint8_t    effect_hue  = 0;
 static uint32_t   effect_timer = 0;
+static void update_effects(void);
 volatile uint32_t last_usb_comms = 0;
 
 /* Macros */
