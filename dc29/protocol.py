@@ -1,0 +1,435 @@
+"""
+dc29.protocol — Authoritative protocol reference for the DC29 badge USB CDC interface.
+
+The badge firmware uses byte ``0x01`` as an escape prefix.  Every command or
+event starts with that escape byte followed by a single ASCII letter that
+identifies the message type, then zero or more argument bytes.
+
+Host → badge commands
+---------------------
+All commands are sent as raw bytes over the USB CDC serial port (9600 baud).
+
+Badge → host events
+-------------------
+Events arrive unsolicited from the badge whenever a button is pressed or an
+internal state changes.  The host protocol parser must buffer incoming bytes
+and dispatch when a complete message is assembled.
+
+Normal serial-console traffic (interactive menu input) never contains ``0x01``,
+so status commands can be safely injected while the console is open.
+"""
+
+from __future__ import annotations
+
+from enum import IntEnum
+from typing import TypeAlias
+
+# ---------------------------------------------------------------------------
+# Fundamental constants
+# ---------------------------------------------------------------------------
+
+ESCAPE: int = 0x01
+"""Escape byte that prefixes every badge protocol message."""
+
+BUTTONS: tuple[int, ...] = (1, 2, 3, 4)
+"""Valid button numbers on the badge."""
+
+LED_COUNT: int = 4
+"""Number of RGB LEDs on the badge."""
+
+# ---------------------------------------------------------------------------
+# Type aliases
+# ---------------------------------------------------------------------------
+
+Color: TypeAlias = tuple[int, int, int]
+"""An (R, G, B) color tuple where each component is in the range 0–255."""
+
+# ---------------------------------------------------------------------------
+# Host → badge command bytes (the byte that follows ESCAPE)
+# ---------------------------------------------------------------------------
+
+CMD_MUTED: int = ord("M")
+"""
+``0x01 'M'`` — Set LED 4 to red, indicating the microphone is muted.
+
+No argument bytes.  LED 4 is always driven at full brightness regardless of
+the global brightness setting, so the mute indicator is never accidentally
+dimmed to invisibility.
+"""
+
+CMD_UNMUTED: int = ord("U")
+"""
+``0x01 'U'`` — Set LED 4 to green, indicating the microphone is active.
+
+No argument bytes.
+"""
+
+CMD_CLEAR: int = ord("X")
+"""
+``0x01 'X'`` — Turn LED 4 off (not in a meeting / status unknown).
+
+No argument bytes.
+"""
+
+CMD_SET_KEY: int = ord("K")
+"""
+``0x01 'K' n mod key`` — Write a single-key macro for button *n* to EEPROM.
+
+Arguments (3 bytes):
+  * ``n``    — button number, 1–4 (or 5–6 for slider directions)
+  * ``mod``  — HID modifier byte (see ``MOD_*`` constants)
+  * ``key``  — HID keycode; use ``0`` with modifier ``0xF0`` for a media key
+
+The badge acknowledges with ``EVT_KEY_ACK``.
+"""
+
+CMD_QUERY_KEY: int = ord("Q")
+"""
+``0x01 'Q' n`` — Query the current keymap for button *n*.
+
+Arguments (1 byte):
+  * ``n`` — button number, 1–6
+
+The badge replies with ``EVT_KEY_REPLY``.
+"""
+
+CMD_SET_LED: int = ord("L")
+"""
+``0x01 'L' n r g b`` — Set the color of LED *n* immediately (RAM only, not saved).
+
+Arguments (4 bytes):
+  * ``n`` — LED number, 1–4
+  * ``r`` — red component 0–255
+  * ``g`` — green component 0–255
+  * ``b`` — blue component 0–255
+
+This command is used for the idle animation and the mute-state indicator.
+"""
+
+CMD_BUTTON_FLASH: int = ord("F")
+"""
+``0x01 'F' v`` — Enable (``v=1``) or disable (``v=0``) the white LED flash on button press.
+
+Arguments (1 byte):
+  * ``v`` — ``0`` to disable, ``1`` to enable (firmware default is enabled)
+"""
+
+CMD_SET_EFFECT: int = ord("E")
+"""
+``0x01 'E' n`` — Set the firmware-driven LED effect mode.
+
+Arguments (1 byte):
+  * ``n`` — effect mode: ``0`` = off, ``1`` = rainbow-chase, ``2`` = breathe
+
+When the firmware is running an effect (mode > 0), Python-side idle
+animations should be suppressed to avoid conflicting LED writes.  The badge
+will emit ``EVT_EFFECT_MODE`` when the mode changes internally (e.g., after a
+long-press chord).
+"""
+
+# ---------------------------------------------------------------------------
+# Badge → host event bytes (the byte that follows ESCAPE)
+# ---------------------------------------------------------------------------
+
+EVT_BUTTON: int = ord("B")
+"""
+``0x01 'B' n mod key`` — A button was pressed.
+
+Payload (3 bytes):
+  * ``n``   — button number, 1–4
+  * ``mod`` — HID modifier byte that was sent
+  * ``key`` — HID keycode that was sent
+
+This event fires after the debounce window; it always reflects what the badge
+actually transmitted over USB HID.
+"""
+
+EVT_KEY_REPLY: int = ord("R")
+"""
+``0x01 'R' n mod key`` — Reply to a ``CMD_QUERY_KEY`` request.
+
+Payload (3 bytes):
+  * ``n``   — button number that was queried
+  * ``mod`` — HID modifier byte stored in EEPROM
+  * ``key`` — HID keycode stored in EEPROM
+"""
+
+EVT_KEY_ACK: int = ord("A")
+"""
+``0x01 'A' n`` — Acknowledgement for a ``CMD_SET_KEY`` command.
+
+Payload (1 byte):
+  * ``n`` — button number whose keymap was updated
+"""
+
+EVT_EFFECT_MODE: int = ord("V")
+"""
+``0x01 'V' n`` — The firmware LED effect mode changed.
+
+Payload (1 byte):
+  * ``n`` — new effect mode (0=off, 1=rainbow-chase, 2=breathe)
+
+Emitted when the user triggers a long-press chord or when the mode is changed
+via ``CMD_SET_EFFECT``.
+"""
+
+EVT_CHORD: int = ord("C")
+"""
+``0x01 'C' n`` — A button chord was fired.
+
+Payload (1 byte):
+  * ``n`` — chord type: ``1`` = short press, ``2`` = long press
+
+Long-press chords (n=2) are used to cycle through firmware LED effects.
+"""
+
+# ---------------------------------------------------------------------------
+# Mute / meeting state
+# ---------------------------------------------------------------------------
+
+
+class MuteState(IntEnum):
+    """Represents the Teams meeting mute state reflected on LED 4."""
+
+    NOT_IN_MEETING = 0
+    """No active meeting; LED 4 is off."""
+
+    UNMUTED = 1
+    """In a meeting with microphone active; LED 4 is green."""
+
+    MUTED = 2
+    """In a meeting with microphone muted; LED 4 is red."""
+
+
+# ---------------------------------------------------------------------------
+# Effect modes
+# ---------------------------------------------------------------------------
+
+
+class EffectMode(IntEnum):
+    """Firmware-driven LED effect modes (used with ``CMD_SET_EFFECT``)."""
+
+    OFF = 0
+    """All LEDs off; no firmware animation running."""
+
+    RAINBOW_CHASE = 1
+    """One LED lit at a time cycling through all four, hue advances per step."""
+
+    BREATHE = 2
+    """All LEDs fade in and out together."""
+
+
+EFFECT_NAMES: dict[int, str] = {
+    EffectMode.OFF: "off",
+    EffectMode.RAINBOW_CHASE: "rainbow-chase",
+    EffectMode.BREATHE: "breathe",
+}
+"""Human-readable names for each :class:`EffectMode`."""
+
+# ---------------------------------------------------------------------------
+# HID modifier byte constants
+# ---------------------------------------------------------------------------
+
+MOD_CTRL: int = 0x01
+"""HID Left Control modifier."""
+
+MOD_SHIFT: int = 0x02
+"""HID Left Shift modifier."""
+
+MOD_ALT: int = 0x04
+"""HID Left Alt modifier."""
+
+MOD_GUI: int = 0x08
+"""HID Left GUI (Windows / Command) modifier."""
+
+MOD_CTRL_SHIFT: int = 0x03
+"""HID Control + Shift."""
+
+MOD_CTRL_ALT: int = 0x05
+"""HID Control + Alt."""
+
+MOD_CTRL_GUI: int = 0x09
+"""HID Control + GUI."""
+
+MOD_SHIFT_ALT: int = 0x06
+"""HID Shift + Alt."""
+
+MOD_SHIFT_GUI: int = 0x0A
+"""HID Shift + GUI."""
+
+MOD_ALT_GUI: int = 0x0C
+"""HID Alt + GUI."""
+
+MOD_CTRL_SHIFT_ALT: int = 0x07
+"""HID Control + Shift + Alt."""
+
+MOD_CTRL_SHIFT_GUI: int = 0x0B
+"""HID Control + Shift + GUI."""
+
+MOD_CTRL_ALT_GUI: int = 0x0D
+"""HID Control + Alt + GUI."""
+
+MOD_SHIFT_ALT_GUI: int = 0x0E
+"""HID Shift + Alt + GUI."""
+
+MOD_CTRL_SHIFT_ALT_GUI: int = 0x0F
+"""HID Control + Shift + Alt + GUI."""
+
+MOD_MEDIA: int = 0xF0
+"""
+Special pseudo-modifier indicating a media / consumer-control key.
+
+When ``mod == MOD_MEDIA``, the keycode is a USB HID consumer-control usage
+ID rather than a standard keyboard keycode.
+"""
+
+_MOD_NAMES: dict[int, str] = {
+    0x00: "",
+    MOD_CTRL: "ctrl",
+    MOD_SHIFT: "shift",
+    MOD_ALT: "alt",
+    MOD_GUI: "gui",
+    MOD_CTRL_SHIFT: "ctrl+shift",
+    MOD_CTRL_ALT: "ctrl+alt",
+    MOD_CTRL_GUI: "ctrl+gui",
+    MOD_SHIFT_ALT: "shift+alt",
+    MOD_SHIFT_GUI: "shift+gui",
+    MOD_ALT_GUI: "alt+gui",
+    MOD_CTRL_SHIFT_ALT: "ctrl+shift+alt",
+    MOD_CTRL_SHIFT_GUI: "ctrl+shift+gui",
+    MOD_CTRL_ALT_GUI: "ctrl+alt+gui",
+    MOD_SHIFT_ALT_GUI: "shift+alt+gui",
+    MOD_CTRL_SHIFT_ALT_GUI: "ctrl+shift+alt+gui",
+    MOD_MEDIA: "media",
+}
+
+# ---------------------------------------------------------------------------
+# Built-in colors
+# ---------------------------------------------------------------------------
+
+BUILTIN_COLORS: dict[str, Color] = {
+    "red":    (255, 0,   0),
+    "green":  (0,   255, 0),
+    "blue":   (0,   0,   255),
+    "white":  (255, 255, 255),
+    "cyan":   (0,   200, 255),
+    "purple": (160, 0,   255),
+    "orange": (255, 80,  0),
+    "yellow": (255, 200, 0),
+    "off":    (0,   0,   0),
+}
+"""Named colors available for use in CLI arguments and the TUI color picker."""
+
+# ---------------------------------------------------------------------------
+# HID keycode names (partial — covers ASCII printables + common special keys)
+# ---------------------------------------------------------------------------
+
+_KEYCODE_NAMES: dict[int, str] = {
+    0x00: "(none)",
+    0x04: "a", 0x05: "b", 0x06: "c", 0x07: "d", 0x08: "e", 0x09: "f",
+    0x0A: "g", 0x0B: "h", 0x0C: "i", 0x0D: "j", 0x0E: "k", 0x0F: "l",
+    0x10: "m", 0x11: "n", 0x12: "o", 0x13: "p", 0x14: "q", 0x15: "r",
+    0x16: "s", 0x17: "t", 0x18: "u", 0x19: "v", 0x1A: "w", 0x1B: "x",
+    0x1C: "y", 0x1D: "z",
+    0x1E: "1", 0x1F: "2", 0x20: "3", 0x21: "4", 0x22: "5",
+    0x23: "6", 0x24: "7", 0x25: "8", 0x26: "9", 0x27: "0",
+    0x28: "enter", 0x29: "esc", 0x2A: "backspace", 0x2B: "tab", 0x2C: "space",
+    0x2D: "-", 0x2E: "=", 0x2F: "[", 0x30: "]", 0x31: "\\",
+    0x33: ";", 0x34: "'", 0x35: "`", 0x36: ",", 0x37: ".", 0x38: "/",
+    0x39: "caps_lock",
+    0x3A: "f1", 0x3B: "f2", 0x3C: "f3", 0x3D: "f4", 0x3E: "f5",
+    0x3F: "f6", 0x40: "f7", 0x41: "f8", 0x42: "f9", 0x43: "f10",
+    0x44: "f11", 0x45: "f12",
+    0x4F: "right", 0x50: "left", 0x51: "down", 0x52: "up",
+    0x4A: "home", 0x4B: "page_up", 0x4C: "delete", 0x4D: "end", 0x4E: "page_down",
+    # Media / consumer-control usage IDs (used when mod == MOD_MEDIA)
+    0xE2: "mute", 0xE9: "vol_up", 0xEA: "vol_down",
+    0xB5: "next_track", 0xB6: "prev_track", 0xCD: "play_pause",
+}
+
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+
+def parse_color(s: str) -> Color:
+    """Parse a color string into an (R, G, B) tuple.
+
+    Accepts either a named color from :data:`BUILTIN_COLORS` (e.g. ``"cyan"``)
+    or a comma-separated RGB triplet (e.g. ``"0,200,255"``).
+
+    Args:
+        s: The color string to parse.
+
+    Returns:
+        A :data:`Color` tuple with components in the range 0–255.
+
+    Raises:
+        ValueError: If the string is not a recognised named color or valid
+            RGB triplet.
+    """
+    low = s.strip().lower()
+    if low in BUILTIN_COLORS:
+        return BUILTIN_COLORS[low]
+    parts = low.split(",")
+    if len(parts) == 3:
+        try:
+            r, g, b = (int(p.strip()) for p in parts)
+            if all(0 <= v <= 255 for v in (r, g, b)):
+                return (r, g, b)
+        except ValueError:
+            pass
+    raise ValueError(
+        f"Invalid color {s!r}. Use 'r,g,b' (0–255 each) or one of: "
+        + ", ".join(BUILTIN_COLORS)
+    )
+
+
+def modifier_name(mod: int) -> str:
+    """Return a human-readable string for a HID modifier byte.
+
+    Args:
+        mod: HID modifier byte (0x00–0xFF).
+
+    Returns:
+        A string like ``"ctrl+shift"`` or ``"media"``.  Returns a hex
+        representation for unrecognised values.
+    """
+    if mod in _MOD_NAMES:
+        return _MOD_NAMES[mod] or "(none)"
+    # Build from individual bit flags for unknown combos.
+    parts = []
+    if mod & MOD_CTRL:
+        parts.append("ctrl")
+    if mod & MOD_SHIFT:
+        parts.append("shift")
+    if mod & MOD_ALT:
+        parts.append("alt")
+    if mod & MOD_GUI:
+        parts.append("gui")
+    remainder = mod & ~(MOD_CTRL | MOD_SHIFT | MOD_ALT | MOD_GUI)
+    if remainder:
+        parts.append(f"0x{remainder:02X}")
+    return "+".join(parts) if parts else "(none)"
+
+
+def keycode_name(kc: int, mod: int = 0) -> str:
+    """Return a human-readable string for a HID keycode.
+
+    When *mod* is :data:`MOD_MEDIA` and *kc* is ``0``, the modifier itself
+    encodes a media key action and the keycode is not meaningful; this is
+    indicated in the return value.
+
+    Args:
+        kc:  HID keycode byte (0x00–0xFF).
+        mod: Optional modifier byte, used to detect media-key context.
+
+    Returns:
+        A descriptive string such as ``"m"``, ``"enter"``, or ``"vol_up"``.
+    """
+    if mod == MOD_MEDIA and kc == 0:
+        return "(media — see modifier)"
+    if kc in _KEYCODE_NAMES:
+        return _KEYCODE_NAMES[kc]
+    return f"0x{kc:02X}"

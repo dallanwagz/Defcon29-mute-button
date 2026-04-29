@@ -1,0 +1,141 @@
+# Hardware Reference
+
+← Back to [Hacker Guide](README.md)
+
+## MCU Specs
+
+| Parameter | Value |
+|-----------|-------|
+| Part | ATSAMD21G16B |
+| Core | ARM Cortex-M0+ |
+| Clock | 48 MHz (USB PLL) |
+| Flash | 64 KB (8 KB bootloader + 56 KB application) |
+| RAM | 8 KB |
+| RWW EEPROM emulation | 260 bytes |
+| USB | Full-speed USB 2.0 device |
+| SERCOM | 6× (SPI/I2C/UART) |
+| TCC/TC timers | 3× TCC + 5× TC |
+| EIC | 16-channel external interrupt |
+| ADC | 12-bit, 20 channels |
+| DAC | 10-bit |
+
+---
+
+## Pin Assignments
+
+### Buttons (active-low, pull-up, EXTINT on falling edge)
+
+| Label | Pin | EXTINT | Notes |
+|-------|-----|--------|-------|
+| BUTTON1 | PIN_PA04 | EIC_EXTINT4 | Top-left |
+| BUTTON2 | PIN_PA05 | EIC_EXTINT5 | Top-right |
+| BUTTON3 | PIN_PA06 | EIC_EXTINT6 | Bottom-left |
+| BUTTON4 | PIN_PA07 | EIC_EXTINT7 | Bottom-right; also DFU trigger |
+
+### LED RGB PWM Outputs (active-high)
+
+| LED | Red | Green | Blue |
+|-----|-----|-------|------|
+| LED1 (top-left) | PIN_PA22 | PIN_PA10 | PIN_PB08 |
+| LED2 (top-right) | PIN_PA23 | PIN_PA11 | PIN_PB09 |
+| LED3 (bottom-left) | PIN_PA20 | PIN_PA18 | PIN_PB10 |
+| LED4 (bottom-right) | PIN_PA21 | PIN_PA19 | PIN_PB11 |
+
+LED4 is the Teams mute indicator. Never drive it from firmware effects.
+
+### Other Signals
+
+| Function | Pin | Notes |
+|----------|-----|-------|
+| Buzzer | PIN_PB22 | TCC output |
+| USB VBUS | PIN_PA01 | EIC_EXTINT1, pull-down, detect-both |
+| Badge matrix | PIN_PA28 | SERCOM comms |
+| MAX | PIN_PA27 | SERCOM comms |
+| Aliens | PIN_PB02 | SERCOM comms |
+
+### Capacitive Touch Slider
+
+Configured via `src/config/touch_config_samd.h`. The slider reports position 0–255 and triggers when the delta from the last position exceeds ±10 counts.
+
+---
+
+## EEPROM Layout
+
+Total available: 260 bytes. Starts at RWW flash, emulated by ASF `rww_eeprom_emulator`.
+
+| Constant | Offset | Size (bytes) | Default | Description |
+|----------|--------|-------------|---------|-------------|
+| `EEP_FIRMWARE_VERSION` | 0 | 1 | 2 | Version byte; mismatch → full reset |
+| `EEP_LED_BRIGHTNESS` | 1 | 1 | 255 | Global brightness (informational) |
+| `EEP_LED_1_COLOR` | 2 | 3 | 255,0,0 | LED1 idle R,G,B |
+| `EEP_LED_2_COLOR` | 5 | 3 | 0,255,0 | LED2 idle R,G,B |
+| `EEP_LED_3_COLOR` | 8 | 3 | 0,0,255 | LED3 idle R,G,B |
+| `EEP_LED_4_COLOR` | 11 | 3 | 127,127,127 | LED4 idle R,G,B |
+| `EEP_LED_1_PRESSED_COLOR` | 14 | 3 | 0,127,127 | LED1 color when button pressed |
+| `EEP_LED_2_PRESSED_COLOR` | 17 | 3 | 127,0,127 | LED2 color when button pressed |
+| `EEP_LED_3_PRESSED_COLOR` | 20 | 3 | 127,127,0 | LED3 color when button pressed |
+| `EEP_LED_4_PRESSED_COLOR` | 23 | 3 | 0,0,0 | LED4 color when button pressed |
+| `EEP_KEY_MAP` | 26 | max 234 | default_keymap | Packed keymap (see protocol docs) |
+
+**Maximum keymap size:** 260 − 26 = 234 bytes. The EEPROM keymap array is declared as `uint8_t keymap[231]` in `main.c`, leaving 3 bytes of margin.
+
+### Default Keymap (21 bytes)
+
+```c
+static const uint8_t default_keymap[21] = {
+    21,         // length
+    250, 3, 16, // button 1: Ctrl+Shift+M (Windows Teams)
+    251, 240, 32, // button 2: media mute key
+    252, 2, 51, 2, 39, // button 3: :) — Shift+; then Shift+0
+    253, 5, 16, // button 4: Ctrl+Alt+M
+    254, 240, 64, // slider up: volume up
+    255, 240, 128 // slider down: volume down
+};
+```
+
+---
+
+## Flash Memory Map
+
+```
+0x0000_0000   Bootloader (8 KB)
+0x0000_2000   Application (up to 56 KB)
+0x0000_F000   RWW EEPROM emulation (in separate RWW flash sector)
+```
+
+The application linker script `samd21g16b_flash.ld`:
+```
+MEMORY {
+    rom (rx)  : ORIGIN = 0x00002000, LENGTH = 0xE000
+    ram (rwx) : ORIGIN = 0x20000000, LENGTH = 0x2000
+}
+```
+
+---
+
+## Timing Constants (from `main.c`)
+
+```c
+#define TIME_PERIOD_1MSEC        33u   // RTC counts per 1 ms
+#define TIME_PERIOD_500MSEC   16500u   // RTC counts per 500 ms (sleep mode)
+#define DEBOUNCE_TIME           200    // ms between button presses
+#define CHORD_SHORT_MS          300    // minimum hold for short chord
+#define CHORD_LONG_MS          2000    // hold time for long chord
+#define EFFECT_CHASE_STEP_MS    150    // ms per step in rainbow-chase
+#define EFFECT_BREATHE_STEP_MS    8    // ms per step in breathe
+#define NUM_EFFECT_MODES          3    // total effect modes (0-based: 0, 1, 2)
+```
+
+The `millis` variable is incremented by the RTC overflow callback every 33 RTC counts (≈1 ms at 32.768 kHz RTC clock).
+
+---
+
+## Hardware Files
+
+| File | Description |
+|------|-------------|
+| `Hardware/Defcon29Schematic.pdf` | Full schematic |
+| `Hardware/Defcon29BOM.pdf` | Bill of materials |
+| `Hardware/Defcon29-TopAssembly.png` | Top assembly |
+| `Hardware/Defcon29BadgeTypes.jpg` | Badge variants |
+| `Hardware/Keycaps/*.stl` | 3D-printable keycap STLs |
