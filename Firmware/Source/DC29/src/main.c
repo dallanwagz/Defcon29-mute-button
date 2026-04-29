@@ -47,7 +47,6 @@
 #include <rww_eeprom.h>
 #include "keys.h"
 #include "serialconsole.h"
-#include "games.h"
 
 
 
@@ -112,19 +111,8 @@ uint8_t keymapstarts[6];
 
 uint8_t fwversion[1];
 
-serial serialnumlist;
-
-//Challenge challengedata;
-ChallengeStruct challengedata;
-
-//Game gamedata;
-GameStruct gamedata;
-
-GameModes gamemode;
-
 extern struct tcc_module tcc2_instance;
 
-volatile bool games_buzzer_off = true;
 volatile uint32_t last_usb_comms = 0;
 
 /* Macros */
@@ -401,16 +389,6 @@ int main(void)
 	delay_cycles_ms(delaytime);
 	led_off(LED4B);
 	
-	if(!port_pin_get_input_level(BUTTON1)){
-		gamemode = SIMON_SOLO;
-		led_set_color(1,LED_COLOR_OFF);
-		led_set_color(2,LED_COLOR_OFF);
-		led_set_color(3,LED_COLOR_OFF);
-		led_set_color(4,LED_COLOR_OFF);
-		while(port_pin_get_input_level(BUTTON1) == false);
-		button1 = false;
-	}
-
 	uart_event = millis;
 	
 	led_set_color(1,led1color);
@@ -421,51 +399,45 @@ int main(void)
 	
 	while(1){
 		//Check Buttons
-		if(gamemode == IDLE){ //Game modes check the buttons themselves
-			if(USBPower && ((millis - last_usb_comms) < 100)){ //Only send keys when connected to a computer
-				if(button1){
-					button1 = false;
-					//if(main_b_kbd_enable) send_keys(1);
-					send_keys(1);
-				}
-				if(button2){
-					button2 = false;
-					//if(main_b_kbd_enable) send_keys(2);
-					send_keys(2);
-				}
-				if(button3){
-					button3 = false;
-					//if(main_b_kbd_enable) send_keys(3);
-					send_keys(3);
-				}
-				if(button4){
-					button4 = false;
-					//if(main_b_kbd_enable) send_keys(4);
-					send_keys(4);
-				}
-			
-				//Check Touch Sensors
-				touch_sensors_measure();
-				if (p_selfcap_measure_data->measurement_done_touch == 1u) {
+		if(USBPower && ((millis - last_usb_comms) < 100)){ //Only send keys when connected to a computer
+			if(button1){
+				button1 = false;
+				send_keys(1);
+			}
+			if(button2){
+				button2 = false;
+				send_keys(2);
+			}
+			if(button3){
+				button3 = false;
+				send_keys(3);
+			}
+			if(button4){
+				button4 = false;
+				send_keys(4);
+			}
 
-					p_selfcap_measure_data->measurement_done_touch = 0u;
-					slider_state = GET_SELFCAP_SENSOR_STATE(0);
-					if(slider_state)
-					{
-						slider_position = GET_SELFCAP_ROTOR_SLIDER_POSITION(0);
-						if(slider_position > last_slider_position + 10){
-							last_slider_position = slider_position;
-							send_keys(6);//sliding down
-						}
-						if(slider_position < last_slider_position - 10){
-							last_slider_position = slider_position;
-							send_keys(5);//sliding up
-						}
+			//Check Touch Sensors
+			touch_sensors_measure();
+			if (p_selfcap_measure_data->measurement_done_touch == 1u) {
+
+				p_selfcap_measure_data->measurement_done_touch = 0u;
+				slider_state = GET_SELFCAP_SENSOR_STATE(0);
+				if(slider_state)
+				{
+					slider_position = GET_SELFCAP_ROTOR_SLIDER_POSITION(0);
+					if(slider_position > last_slider_position + 10){
+						last_slider_position = slider_position;
+						send_keys(6);//sliding down
+					}
+					if(slider_position < last_slider_position - 10){
+						last_slider_position = slider_position;
+						send_keys(5);//sliding up
 					}
 				}
 			}
 		}
-		
+
 		//Update USB serial console if we got data
 		if(main_b_cdc_enable){
 			if(udi_cdc_get_nb_received_data()){
@@ -475,37 +447,14 @@ int main(void)
 		
 		//Go to sleep to save battery
 		//if (!USBPower && ((uart_event + 1000) < millis)) {
-		if (!USBPower && ((millis - uart_event) > 1000) && gamemode != SIMON_SOLO) {
+		if (!USBPower && ((millis - uart_event) > 1000)) {
 			standby_sleep();
 		}
 		
 		
-		//Check serial ports
-		check_comms();
-		
-		run_games();
-		
-		play_sounds();
 	}
 }
 
-
-void send_data(void){
-	const uint16_t data = 1;
-	uint8_t delay = 50;
-	usart_write_job(&usart_top_instance, &data);
-	delay_cycles_ms(delay);
-	usart_write_job(&usart_right_instance, &data);
-	delay_cycles_ms(delay);
-	usart_write_job(&usart_bottom_instance, &data);
-	delay_cycles_ms(delay);
-	usart_write_job(&usart_left_instance, &data);
-	delay_cycles_ms(delay);
-	usart_write_job(&usart_usba_instance, &data);
-	delay_cycles_ms(delay);
-	usart_write_job(&usart_usbc_instance, &data);
-	delay_cycles_ms(delay);
-}
 
 void main_suspend_action(void)
 {
@@ -572,41 +521,6 @@ void rtc_overflow_callback(void)
 		touch_time_counter++;
 	}
 	
-	if(gamemode == SIMON_SOLO || gamemode == SIMON_MULTI_PRIMARY || gamemode == SIMON_MULTI_SECONDARY){
-		if(!port_pin_get_input_level(BUTTON1)){
-			tcc_restart_counter(&tcc2_instance);
-			tcc_set_compare_value(&tcc2_instance,0,219); //415Hz
-			
-			led_set_color(1,LED_COLOR_GREEN);
-		}
-		if(!port_pin_get_input_level(BUTTON2)){
-			tcc_restart_counter(&tcc2_instance);
-			tcc_set_compare_value(&tcc2_instance,0,293); //310Hz
-			
-			led_set_color(2,LED_COLOR_RED);
-		}
-		if(!port_pin_get_input_level(BUTTON3)){
-			tcc_restart_counter(&tcc2_instance);
-			tcc_set_compare_value(&tcc2_instance,0,360); //252Hz
-			
-			led_set_color(3,LED_COLOR_YELLOW);
-		}
-		if(!port_pin_get_input_level(BUTTON4)){
-			tcc_restart_counter(&tcc2_instance);
-			tcc_set_compare_value(&tcc2_instance,0,435); //209Hz
-			
-			led_set_color(4,LED_COLOR_BLUE);
-		}
-	
-		if(port_pin_get_input_level(BUTTON1) & port_pin_get_input_level(BUTTON2) & port_pin_get_input_level(BUTTON3) & port_pin_get_input_level(BUTTON4) & games_buzzer_off){
-			//tcc_set_compare_value(&tcc2_instance,0,0); //off
-			tcc_stop_counter(&tcc2_instance);
-			led_set_color(1,LED_COLOR_OFF);
-			led_set_color(2,LED_COLOR_OFF);
-			led_set_color(3,LED_COLOR_OFF);
-			led_set_color(4,LED_COLOR_OFF);
-		}
-	}
 }
 
 /*! \brief Configure the RTC timer callback
@@ -717,16 +631,11 @@ void main_cdc_set_dtr(uint8_t port, bool b_enable)
 	}
 }
 
-void reset_eeprom(void){ //reset entire EEPROM including challenge and game data
+void reset_eeprom(void){
 	rww_eeprom_emulator_erase_memory();
 	rww_eeprom_emulator_init();
 	fwversion[0] = FIRMWARE_VERSION;
 	rww_eeprom_emulator_write_buffer(EEP_FIRMWARE_VERSION, fwversion, 1);
-	uint8_t eepdata[1];
-	eepdata[0] = 0;
-	for(int x=1; x<EEP_LED_BRIGHTNESS; x++){
-		rww_eeprom_emulator_write_buffer(x, eepdata, 1);
-	}
 	uint8_t leddata[3];
 	leddata[0] = 255; //full brightness as default
 	rww_eeprom_emulator_write_buffer(EEP_LED_BRIGHTNESS, leddata, 1);
@@ -768,12 +677,6 @@ void reset_eeprom(void){ //reset entire EEPROM including challenge and game data
 }
 
 void reset_user_eeprom(void){ //Reset the LED and keymap data
-	#if DEBUG > 0 //Reset badge challenge info in debug mode
-	uint8_t bytes[80] = {0};
-	rww_eeprom_emulator_write_buffer(EEP_CHALLENGE_CONNECTED_TYPES, bytes, 5);
-	rww_eeprom_emulator_write_buffer(EEP_CHALLENGE_BADGE_SERIALS, bytes, 80);
-	rww_eeprom_emulator_write_buffer(EEP_GAME_SIMON_SOLO_HIGH_SCORE, bytes, 18);
-	#endif
 	uint8_t leddata[3];
 	leddata[0] = 255; //full brightness as default
 	rww_eeprom_emulator_write_buffer(EEP_LED_BRIGHTNESS, leddata, 1);
@@ -824,25 +727,6 @@ void reset_user_eeprom(void){ //Reset the LED and keymap data
 }
 
 void read_eeprom(void){
-	uint8_t bytes[18];
-	rww_eeprom_emulator_read_buffer(EEP_CHALLENGE_CONNECTED_TYPES,bytes, 5);
-	challengedata.badgetypes = bytes[0];
-	challengedata.numconnected = bytes[1] | (bytes[2] << 8);
-	challengedata.numshared = bytes[3] | (bytes[4] << 8);
-	
-	rww_eeprom_emulator_read_buffer(EEP_CHALLENGE_BADGE_SERIALS,serialnumlist.bytes, 80);
-	
-	rww_eeprom_emulator_read_buffer(EEP_GAME_SIMON_SOLO_HIGH_SCORE,bytes, 18);
-	gamedata.simon_solo_high_score = bytes[0] | (bytes[1]<<8);
-	gamedata.simon_multi_high_score = bytes[2] | (bytes[3]<<8);
-	gamedata.simon_multi_connections = bytes[4] | (bytes[5]<<8);
-	gamedata.simon_multi_games_played = bytes[6] | (bytes[7]<<8);
-	gamedata.wam_solo_high_score = bytes[8] | (bytes[9]<<8);
-	gamedata.wam_multi_high_score = bytes[10] | (bytes[11]<<8);
-	gamedata.wam_multi_connections = bytes[12] | (bytes[13]<<8);
-	gamedata.wam_multi_games_played = bytes[14] | (bytes[15]<<8);
-	gamedata.wam_multi_wins = bytes[16] | (bytes[17]<<8);
-	
 	rww_eeprom_emulator_read_buffer(EEP_LED_1_COLOR, led1color, 3);
 	rww_eeprom_emulator_read_buffer(EEP_LED_2_COLOR, led2color, 3);
 	rww_eeprom_emulator_read_buffer(EEP_LED_3_COLOR, led3color, 3);

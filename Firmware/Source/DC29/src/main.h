@@ -40,25 +40,13 @@
 #include "asf.h"
 #include "pwm.h"
 #include "comms.h"
-#include "games.h"
 
 
 
 #define DEBUG 0 //debug code no longer fits in the available flash :(
 
-#define FIRMWARE_VERSION 1 //Only change if EEPROM layout changes
+#define FIRMWARE_VERSION 2 //Only change if EEPROM layout changes
 
-//Badge Type can be:
-// 1 = Human
-// 2 = Goon
-// 4 = Creator
-// 8 = Speaker
-// 16 = Artist
-// 32 = Vendor
-// 64 = Press
-// 128 = UBER - DON'T DO THIS! It will break other badges!
-
-#define BADGE_TYPE 1
 
 #define BUTTON1 PIN_PA04
 #define BUTTON2 PIN_PA05
@@ -93,75 +81,25 @@
 //EEPROM Location Offsets
 #define	EEP_FIRMWARE_VERSION 0 //1 BYTE
 
-#define EEP_CHALLENGE_CONNECTED_TYPES 1 //1 BYTE
-#define EEP_CHALLENGE_NUM_CONNECTED 2 //2 BYTES
-#define EEP_CHALLENGE_NUM_SHARED 4 //2 BYTES
-#define EEP_CHALLENGE_BADGE_SERIALS 6 //4 BYTES EACH, 20 BADGES, 80 BYTES TOTAL
+#define EEP_LED_BRIGHTNESS 1 //1 BYTE
+#define EEP_LED_1_COLOR 2 //3 BYTES
+#define EEP_LED_2_COLOR 5 //3 BYTES
+#define EEP_LED_3_COLOR 8 //3 BYTES
+#define EEP_LED_4_COLOR 11 //3 BYTES
+#define EEP_LED_1_PRESSED_COLOR 14 //3 BYTES
+#define EEP_LED_2_PRESSED_COLOR 17 //3 BYTES
+#define EEP_LED_3_PRESSED_COLOR 20 //3 BYTES
+#define EEP_LED_4_PRESSED_COLOR 23 //3 BYTES
 
-#define NUM_BADGE_SERIALS 20
+#define EEP_KEY_MAP 26 //MAX 234 BYTES (EEPROM is limited to 260 bytes)
 
-#define EEP_GAME_SIMON_SOLO_HIGH_SCORE 86 //2 BYTES
-#define EEP_GAME_SIMON_MULTI_HIGH_SCORE 88 //2 BYTES
-#define EEP_GAME_SIMON_MULTI_CONNECTIONS 90 //2 BYTES
-#define EEP_GAME_SIMON_MULTI_GAMES_PLAYED 92 //2 BYTES
-#define EEP_GAME_WAM_SOLO_HIGH_SCORE  94 //2 BYTES
-#define EEP_GAME_WAM_MULTI_HIGH_SCORE 96 //2 BYTES
-#define EEP_GAME_WAM_MULTI_CONNECTIONS 98 //2 BYTES
-#define EEP_GAME_WAM_MULTI_GAMES_PLAYED 100 //2 BYTES
-#define EEP_GAME_WAM_MULTI_WINS 102 //2 BYTES
-
-#define EEP_LED_BRIGHTNESS 104 //1 BYTE
-#define EEP_LED_1_COLOR 105 //3 BYTES
-#define EEP_LED_2_COLOR 108 //3 BYTES
-#define EEP_LED_3_COLOR 111 //3 BYTES
-#define EEP_LED_4_COLOR 114 //3 BYTES
-#define EEP_LED_1_PRESSED_COLOR 117 //3 BYTES
-#define EEP_LED_2_PRESSED_COLOR 120 //3 BYTES
-#define EEP_LED_3_PRESSED_COLOR 123 //3 BYTES
-#define EEP_LED_4_PRESSED_COLOR 126 //3 BYTES
-
-#define EEP_KEY_MAP 129 //MAX 231 BYTES (EEPROM is limited to 260 bytes)
-
-typedef enum {
-	IDLE,
-	SELECT_GAME,
-	SIMON_SOLO,
-	SIMON_MULTI_PRIMARY,
-	SIMON_MULTI_SECONDARY,
-	WAM_SOLO,
-	WAM_MULTI,
-	WAIT_FOR_START,
-} GameModes;
-
-typedef struct {
-	uint8_t badgetypes;
-	uint16_t numconnected;
-	uint16_t numshared;
-} ChallengeStruct;
-
-typedef union {
-	uint32_t numbers[20];
-	uint8_t bytes[80];
-} serial;
-
-typedef struct {
-	uint16_t simon_solo_high_score;
-	uint16_t simon_multi_high_score;
-	uint16_t simon_multi_connections;
-	uint16_t simon_multi_games_played;
-	uint16_t wam_solo_high_score;
-	uint16_t wam_multi_high_score;
-	uint16_t wam_multi_connections;
-	uint16_t wam_multi_games_played;
-	uint16_t wam_multi_wins;
-} GameStruct;
 
 static const uint8_t default_keymap[21] = { 
 	21, //length
 	250,3,16, //key1 - ctrl-shift-m
 	251,240,32, //key2 - Mute
 	252,2,51,2,39, //key3 - :)
-	253,240,16, //key4 - Play/Pause
+	253,5,16, //key4 - ctrl+alt+m
 	254,240,64,255,240,128 //slider Vol+/-
 };
 /*! \brief Called by HID interface
@@ -218,8 +156,6 @@ void configure_rtc_callbacks(void);
  *
  */
 void configure_rtc_count(void);
-
-void send_data(void);
 
 void vbus_handler(void);
 

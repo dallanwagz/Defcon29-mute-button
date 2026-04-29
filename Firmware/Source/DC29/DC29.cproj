@@ -896,12 +896,6 @@
     <Folder Include="src\qtouch\" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="src\games.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="src\games.h">
-      <SubType>compile</SubType>
-    </Compile>
     <Compile Include="src\keys.c">
       <SubType>compile</SubType>
     </Compile>
