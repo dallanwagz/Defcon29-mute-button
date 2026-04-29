@@ -100,6 +100,7 @@ volatile bool button3 = false;
 volatile bool button4 = false;
 
 #define DEBOUNCE_TIME 200
+#define LONG_PRESS_TIME 800
 volatile uint32_t lastButton1Press = 0;
 volatile uint32_t lastButton2Press = 0;
 volatile uint32_t lastButton3Press = 0;
@@ -114,6 +115,9 @@ uint8_t fwversion[1];
 extern struct tcc_module tcc2_instance;
 
 bool button_flash_enabled = true;
+bool effects_enabled = true;
+volatile bool button1_held = false;
+volatile uint32_t button1_held_start = 0;
 volatile uint32_t last_usb_comms = 0;
 
 /* Macros */
@@ -283,12 +287,12 @@ int main(void)
 	extint_register_callback(vbus_handler, 1, EXTINT_CALLBACK_TYPE_DETECT);
 	extint_chan_enable_callback(1,EXTINT_CALLBACK_TYPE_DETECT);
 
-	//Button 1 interrupt
+	//Button 1 interrupt (DETECT_BOTH to support long-press effects toggle)
 	config_extint_chan.gpio_pin            = PIN_PA04A_EIC_EXTINT4;
 	config_extint_chan.gpio_pin_mux        = PINMUX_PA04A_EIC_EXTINT4;
 	config_extint_chan.gpio_pin_pull       = EXTINT_PULL_UP;
 	config_extint_chan.filter_input_signal = true;
-	config_extint_chan.detection_criteria  = EXTINT_DETECT_FALLING;
+	config_extint_chan.detection_criteria  = EXTINT_DETECT_BOTH;
 	extint_chan_set_config(4, &config_extint_chan);
 	extint_register_callback(button1_handler, 4, EXTINT_CALLBACK_TYPE_DETECT);
 	extint_chan_enable_callback(4,EXTINT_CALLBACK_TYPE_DETECT);
@@ -416,6 +420,14 @@ int main(void)
 			if(button4){
 				button4 = false;
 				send_keys(4);
+			}
+
+			// Long-press button 1 (>800ms): toggle effects, notify Python
+			if(button1_held && (millis - button1_held_start) >= LONG_PRESS_TIME){
+				button1_held = false;
+				effects_enabled = !effects_enabled;
+				uint8_t evt[3] = {0x01, 'V', effects_enabled ? 1 : 0};
+				udi_cdc_write_buf(evt, 3);
 			}
 
 			//Check Touch Sensors
@@ -570,12 +582,20 @@ void timer_init(void)
 }
 
 void button1_handler(void){
-	if(button1 == false){
+	if(!port_pin_get_input_level(BUTTON1)){
+		// Falling edge: button pressed
 		if((millis - lastButton1Press) > DEBOUNCE_TIME){
 			lastButton1Press = millis;
-			button1 = true;
+			button1_held = true;
+			button1_held_start = millis;
 			uart_event = millis;
 		}
+	} else {
+		// Rising edge: button released — short press fires normal keypress
+		if(button1_held && (millis - button1_held_start) < LONG_PRESS_TIME){
+			button1 = true;
+		}
+		button1_held = false;
 	}
 }
 

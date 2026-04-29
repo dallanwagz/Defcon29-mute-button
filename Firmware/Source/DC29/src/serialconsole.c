@@ -19,10 +19,12 @@ extern bool main_b_cdc_enable;
      0x01 Q n        -> query button n; badge replies 0x01 R n m k
      0x01 L n r g b  -> set LED n (1-4) color immediately (not saved to EEPROM)
      0x01 F 0/1      -> disable/enable button press white flash (RAM only, default on)
+     0x01 E 0/1      -> disable/enable idle LED effects (RAM only, default on)
    Commands from badge to host:
      0x01 B n m k    -> button n was pressed; first keymap entry is modifier m, keycode k
      0x01 R n m k    -> reply to Q query
      0x01 A n        -> ACK after K set-keymap command
+     0x01 V n        -> effects state changed by long-press (n = 0 off, 1 on)
    0x01 never appears in menu traffic so this channel is safe to use concurrently. */
 #define STATUS_ESCAPE 0x01
 static uint8_t escape_state = 0;  /* 0=idle 1=awaiting_cmd 2=collecting_args */
@@ -35,6 +37,7 @@ extern uint8_t keymaplength;
 extern uint8_t keymap[];
 extern uint8_t keymapstarts[];
 extern bool button_flash_enabled;
+extern bool effects_enabled;
 
 static uint8_t newKeystroke[230];
 static uint8_t newKeymap[2];
@@ -112,6 +115,7 @@ void updateSerialConsole(void){
 				if(data == 'Q'){ escape_args_needed = 1; escape_state = 2; return; }
 				if(data == 'L'){ escape_args_needed = 4; escape_state = 2; return; }
 				if(data == 'F'){ escape_args_needed = 1; escape_state = 2; return; }
+				if(data == 'E'){ escape_args_needed = 1; escape_state = 2; return; }
 				return;
 			}
 			if(escape_state == 2){
@@ -136,6 +140,8 @@ void updateSerialConsole(void){
 					}
 				} else if(escape_cmd == 'F'){
 					button_flash_enabled = (escape_args[0] != 0);
+				} else if(escape_cmd == 'E'){
+					effects_enabled = (escape_args[0] != 0);
 				}
 				return;
 			}

@@ -151,6 +151,7 @@ class BadgeWriter:
         self._rx_args: list[int] = []
         self._rx_args_needed = 0
         self.on_button4_press: "Callable[[], None] | None" = None
+        self.on_effects_toggle: "Callable[[int], None] | None" = None
 
     def _ensure_open(self) -> None:
         if self._serial is None or not self._serial.is_open:
@@ -194,6 +195,9 @@ class BadgeWriter:
             elif b == ord('R'):
                 self._rx_args_needed = 3
                 self._rx_state = 2
+            elif b == ord('V'):
+                self._rx_args_needed = 1
+                self._rx_state = 2
             else:
                 self._rx_state = 0
         elif self._rx_state == 2:
@@ -215,6 +219,11 @@ class BadgeWriter:
                          args[0], args[1], args[2])
         elif cmd == 'A' and len(args) == 1:
             logging.info("Badge ACK: keymap set for button %d", args[0])
+        elif cmd == 'V' and len(args) == 1:
+            state = args[0]
+            logging.info("Badge effects toggle: %s", "on" if state else "off")
+            if self.on_effects_toggle is not None:
+                self.on_effects_toggle(state)
 
     def _close(self) -> None:
         try:
@@ -463,6 +472,8 @@ async def run_once(
     idle_animation: str | None = None,
     idle_color: Color = (0, 200, 255),
     idle_speed: int = 150,
+    effects_queue: asyncio.Queue | None = None,
+    effects_enabled: "list[bool] | None" = None,
 ) -> None:
     token = load_token()
     url = build_url(token)
@@ -472,13 +483,28 @@ async def run_once(
     while not toggle_queue.empty():
         toggle_queue.get_nowait()
 
+    _effects = effects_enabled if effects_enabled is not None else [True]
+
     def _start_idle() -> None:
-        if not animator:
+        if not animator or not _effects[0]:
             return
         if idle_animation == "rainbow":
             animator.start_rainbow_chase(speed_ms=idle_speed)
         elif idle_animation == "chase":
             animator.start_chase(color=idle_color, speed_ms=idle_speed)
+
+    async def _effects_watcher() -> None:
+        if effects_queue is None:
+            return
+        while True:
+            state = await effects_queue.get()
+            _effects[0] = bool(state)
+            if not _effects[0]:
+                if animator:
+                    animator.stop()
+            else:
+                if not tracker.is_in_meeting:
+                    _start_idle()
 
     async with websockets.connect(url, max_size=2**20) as ws:
         logging.info("Connected. Listening for meeting updates...")
@@ -491,6 +517,7 @@ async def run_once(
             _start_idle()
 
         toggle_task = asyncio.create_task(_toggle_sender(ws, toggle_queue, tracker))
+        effects_task = asyncio.create_task(_effects_watcher())
         try:
             async for raw in ws:
                 try:
@@ -524,6 +551,9 @@ async def run_once(
         finally:
             if animator:
                 animator.stop()
+            effects_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await effects_task
             toggle_task.cancel()
             with suppress(asyncio.CancelledError):
                 await toggle_task
@@ -537,20 +567,26 @@ async def supervise(
     idle_speed: int = 150,
     brightness: float = 1.0,
     button_flash: bool = True,
+    effects: bool = True,
 ) -> None:
     badge = BadgeWriter(port_name, brightness=brightness)
     badge.set_led(4, *COLOR_CLEAR)
     if not button_flash:
         badge.write(bytes([0x01, ord('F'), 0]))
+    if not effects:
+        badge.write(bytes([0x01, ord('E'), 0]))
     badge.query_keymap(4)  # log button 4's configured keymap at startup
 
     animator = LedAnimator(badge) if idle_animation else None
 
     toggle_queue: asyncio.Queue = asyncio.Queue()
+    effects_queue: asyncio.Queue = asyncio.Queue()
+    effects_enabled = [effects]
     tracker = _MeetingTracker()
 
     loop = asyncio.get_running_loop()
     badge.on_button4_press = lambda: loop.call_soon_threadsafe(toggle_queue.put_nowait, True)
+    badge.on_effects_toggle = lambda state: loop.call_soon_threadsafe(effects_queue.put_nowait, state)
 
     hotkey_listener = None
     if toggle_hotkey:
@@ -577,7 +613,9 @@ async def supervise(
             try:
                 await run_once(badge, toggle_queue, tracker,
                                animator=animator, idle_animation=idle_animation,
-                               idle_color=idle_color, idle_speed=idle_speed)
+                               idle_color=idle_color, idle_speed=idle_speed,
+                               effects_queue=effects_queue,
+                               effects_enabled=effects_enabled)
             except (websockets.ConnectionClosed, ConnectionRefusedError, OSError) as exc:
                 logging.warning("Disconnected: %s. Reconnecting in %ds...", exc, RECONNECT_DELAY_SECONDS)
             except Exception as exc:
@@ -641,6 +679,12 @@ def main() -> int:
         default=False,
         help="Disable the white LED flash on button press (requires firmware support for 0x01 F command).",
     )
+    parser.add_argument(
+        "--no-effects",
+        action="store_true",
+        default=False,
+        help="Start with idle LED effects disabled. Can be toggled live by holding button 1 for 0.8s.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -658,6 +702,7 @@ def main() -> int:
             idle_speed=args.idle_speed,
             brightness=args.brightness,
             button_flash=not args.no_button_flash,
+            effects=not args.no_effects,
         ))
     except KeyboardInterrupt:
         return 0
