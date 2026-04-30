@@ -109,9 +109,9 @@ void updateSerialConsole(void){
 				escape_state = 0;
 				escape_cmd = (uint8_t)data;
 				escape_args_count = 0;
-				if(data == 'M'){ led_set_color(4, LED_COLOR_RED); return; }
-				if(data == 'U'){ led_set_color(4, LED_COLOR_GREEN); return; }
-				if(data == 'X'){ led_set_color(4, LED_COLOR_OFF); return; }
+				if(data == 'M'){ led_set_resting_color(4, LED_COLOR_RED); return; }
+				if(data == 'U'){ led_set_resting_color(4, LED_COLOR_GREEN); return; }
+				if(data == 'X'){ led_set_resting_color(4, LED_COLOR_OFF); return; }
 				if(data == 'K'){ escape_args_needed = 3; escape_state = 2; return; }
 				if(data == 'Q'){ escape_args_needed = 1; escape_state = 2; return; }
 				if(data == 'L'){ escape_args_needed = 4; escape_state = 2; return; }
@@ -137,7 +137,7 @@ void updateSerialConsole(void){
 					uint8_t n = escape_args[0];
 					if(n >= 1 && n <= 4){
 						uint8_t color[3] = {escape_args[1], escape_args[2], escape_args[3]};
-						led_set_color(n, color);
+						led_set_resting_color(n, color);
 					}
 				} else if(escape_cmd == 'F'){
 					button_flash_enabled = (escape_args[0] != 0);

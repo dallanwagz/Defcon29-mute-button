@@ -255,7 +255,7 @@ class TeamsBridge(BaseBridge):
         while not self._action_queue.empty():
             self._action_queue.get_nowait()
 
-        async with websockets.connect(url, max_size=2**20) as ws:
+        async with websockets.connect(url, max_size=2**20, open_timeout=30) as ws:
             log.info("Connected. Listening for meeting updates…")
             if not token:
                 await ws.send(json.dumps({"requestId": 1, "action": "pair"}))
@@ -316,13 +316,24 @@ class TeamsBridge(BaseBridge):
 
     def _set_meeting_state(self, new_state: MuteState) -> None:
         """Update local state, drive badge LEDs, and fire callbacks."""
+        was_in_meeting = self._mute_state != MuteState.NOT_IN_MEETING
+        now_in_meeting = new_state != MuteState.NOT_IN_MEETING
         changed = new_state != self._mute_state
         self._mute_state = new_state
 
+        # Suppress the button-press takeover animation during meetings so LED 4
+        # always shows accurate mute state instead of a 2.5 s light show.
+        if not was_in_meeting and now_in_meeting:
+            self._badge.set_button_flash(False)
+        elif was_in_meeting and not now_in_meeting:
+            self._badge.set_button_flash(True)
+
         if new_state == MuteState.NOT_IN_MEETING:
-            # Clear all page LEDs — button presses fall through to EEPROM
-            self._clear_page_leds()
-            self._badge.set_current_page(None)
+            # Only touch LEDs when leaving a meeting — don't clobber other bridges
+            # (Outlook, Slack, etc.) just because Teams isn't connected.
+            if was_in_meeting:
+                self._clear_page_leds()
+                self._badge.set_current_page(None)
         else:
             # Light up all page buttons with their action colors
             for btn, action in self._button_actions.items():
@@ -360,7 +371,11 @@ class TeamsBridge(BaseBridge):
         if changed:
             log.info("Meeting state → %s", label)
 
-        self._badge.set_mute_state(new_state)
+        # Only drive the firmware LED when transitioning into or out of a meeting.
+        # Sending NOT_IN_MEETING while Teams is simply disconnected would turn off
+        # LED 4 even when another bridge (Outlook, Slack) owns it.
+        if was_in_meeting or now_in_meeting:
+            self._badge.set_mute_state(new_state)
 
         if changed and self.on_state_change is not None:
             try:

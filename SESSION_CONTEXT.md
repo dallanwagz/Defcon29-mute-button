@@ -60,14 +60,17 @@ Chrome is the fallback browser page (lowest priority), overridden when a specifi
 **User prompt:**
 > "each button press should satisfyingly shoot out its color and cause some sort of fun and unexpected interaction of the color of the leds around it - sometimes mixing rgb values, sometimes getting overridden by the color from the pressing (sending) button... again, we want this to be satisfying to use. pressing a button and getting visual feedback is satisfying to a human. remember we should be doing as much processing in firmware as possible, especially these animations if those could be handled with much quicker resolution for more immersive interactions at the firmware level vs at the python level which isn't as quick"
 
-**Implementation:** `led_ripple_start()` / `led_ripple_finish()` in `pwm.c`. Key design:
+**Implementation:** `takeover_start(src_0)` / `takeover_tick()` in `pwm.c` (non-blocking; called each main-loop iteration). Key design:
 - Pressed LED: boosted +55 brightness splash
 - Adjacent LEDs (circular 1-2-3-4-1): **additive blend** — creates color surprises (red button + blue neighbor = blue-violet)
 - Opposite LED: 25% echo of pressed color
-- 40ms hold → midpoint crossfade → full restore (~200ms total
+- 40ms hold → midpoint crossfade → full restore (~200ms total)
 - All in firmware, no Python latency
+- LED colors are set via `led_set_resting_color()` — a shadow value that survives the animation and is restored when the takeover finishes
 
 The "unexpected color interactions" are intentional — additive blending creates emergent colors that are satisfying and slightly unpredictable, which was the explicit design goal.
+
+**Python bridge interaction:** When a FocusBridge or TeamsBridge takes ownership of LEDs, it calls `badge.set_button_flash(False)` to disable the firmware takeover animation. This prevents the firmware from overwriting bridge-managed colors on button press. Flash is re-enabled when the bridge loses focus or the meeting ends.
 
 ---
 
@@ -110,8 +113,8 @@ dc29/
 
 Firmware/Source/DC29/src/
 ├── main.c              — Superloop: buttons, slider, USB CDC, sleep
-├── keys.c              — send_keys(): EEPROM keymap replay + ripple hook
-├── pwm.c               — LED PWM + led_ripple_start/finish animation
+├── keys.c              — send_keys(): EEPROM keymap replay + takeover_start hook
+├── pwm.c               — LED PWM + takeover_start/tick animation + led_set_resting_color
 ├── serialconsole.c     — USB CDC menu + status indicator side-channel
 └── comms.c / games.c  — Badge-to-badge UART, Simon Says, Whack-a-Mole
 ```
@@ -119,7 +122,7 @@ Firmware/Source/DC29/src/
 ### Key flow: button press in `dc29 flow` mode
 
 1. User presses B3
-2. Badge firmware fires ripple animation (circular additive color blend, ~200ms, all in C)
+2. Badge firmware fires takeover animation (circular additive color blend, ~200ms, all in C)
 3. Badge sends `0x01 'B' 3 <mod> <kc>` over USB CDC
 4. `badge.py` reader thread parses → calls `on_button_press(3, mod, kc)`
 5. The installed hook chain checks: is this button owned + `_should_handle_button()` true?

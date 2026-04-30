@@ -49,12 +49,20 @@ void buzzer_off(void);
 
 void buzzer_set_value(uint8_t value);
 
-/* Button press ripple animation — call led_ripple_start() before sending keys,
- * led_ripple_finish() after.  Bright-flashes the pressed LED and additively
- * bleeds its color into adjacent LEDs (creating color-mix surprises), then
- * cross-fades everything back to stored values over ~75ms.
- * Falls back to a plain white flash when the pressed LED has no color. */
-void led_ripple_start(uint8_t key);
-void led_ripple_finish(void);
+/* Resting-color shadow — use instead of led_set_color() for persistent state.
+ * Updates the shadow; only drives hardware immediately when no takeover is active. */
+void led_set_resting_color(uint8_t led, uint8_t color[3]);
+
+/* Non-blocking button-press takeover animation.
+ * takeover_start(src_0): src_0 is 0-based button index (0=TL,1=TR,2=BL,3=BR).
+ *   Call once on button press; cancels any in-progress animation and restarts.
+ * takeover_tick(): call every main-loop iteration (~1 ms).
+ *   Returns true while animation is running (caller should skip other LED updates). */
+void takeover_start(uint8_t src_0);
+bool takeover_tick(void);
+
+/* Non-blocking buzzer. */
+void buzzer_play(uint16_t freq_hz, uint8_t duration_ms);
+void buzzer_cancel(void);
 
 #endif /* PWM_H_ */

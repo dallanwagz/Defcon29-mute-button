@@ -126,7 +126,6 @@ static uint32_t   chord_start = 0;
 static uint8_t    effect_step = 0;
 static uint8_t    effect_hue  = 0;
 static uint32_t   effect_timer = 0;
-static void update_effects(void);
 volatile uint32_t last_usb_comms = 0;
 
 /* Forward declarations for static functions defined later in this file */
@@ -409,12 +408,12 @@ int main(void)
 	
 	uart_event = millis;
 	
-	led_set_color(1,led1color);
-	led_set_color(2,led2color);
-	led_set_color(3,led3color);
-	led_set_color(4,led4color);
+	led_set_resting_color(1,led1color);
+	led_set_resting_color(2,led2color);
+	led_set_resting_color(3,led3color);
+	led_set_resting_color(4,led4color);
 
-	
+
 	while(1){
 		/* --- 4-button chord detection (works standalone, no USB required) ---
 		   Short chord (all 4 held CHORD_SHORT_MS..CHORD_LONG_MS, released):
@@ -621,9 +620,9 @@ void set_effect_mode(uint8_t mode){
 	effect_hue   = 0;
 	effect_timer = millis;
 	if(mode == 0){
-		led_set_color(1, led1color);
-		led_set_color(2, led2color);
-		led_set_color(3, led3color);
+		led_set_resting_color(1, led1color);
+		led_set_resting_color(2, led2color);
+		led_set_resting_color(3, led3color);
 	}
 	if(main_b_cdc_enable){
 		uint8_t evt[3] = {0x01, 'V', mode};
@@ -634,6 +633,7 @@ void set_effect_mode(uint8_t mode){
 /* Advance LED animation one frame; call every main-loop iteration.
    Only touches LEDs 1-3; LED 4 is reserved for mute-state indicator. */
 static void update_effects(void){
+	if(takeover_tick()) return;
 	if(effect_mode == 0) return;
 	uint32_t now = millis;
 
@@ -825,13 +825,13 @@ void reset_user_eeprom(void){ //Reset the LED and keymap data
 	rww_eeprom_emulator_commit_page_buffer();
 	
 	rww_eeprom_emulator_read_buffer(EEP_LED_1_COLOR, led1color, 3);
-	led_set_color(1,led1color);
+	led_set_resting_color(1,led1color);
 	rww_eeprom_emulator_read_buffer(EEP_LED_2_COLOR, led2color, 3);
-	led_set_color(2,led2color);
+	led_set_resting_color(2,led2color);
 	rww_eeprom_emulator_read_buffer(EEP_LED_3_COLOR, led3color, 3);
-	led_set_color(3,led3color);
+	led_set_resting_color(3,led3color);
 	rww_eeprom_emulator_read_buffer(EEP_LED_4_COLOR, led4color, 3);
-	led_set_color(4,led4color);
+	led_set_resting_color(4,led4color);
 }
 
 void read_eeprom(void){

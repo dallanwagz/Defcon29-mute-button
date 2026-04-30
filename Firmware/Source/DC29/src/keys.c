@@ -62,9 +62,8 @@ void send_keys(uint8_t key){
 		uint8_t evt[5] = {0x01, 'B', key, rmod, rkc};
 		udi_cdc_write_buf(evt, 5);
 	}
-	bool do_ripple = button_flash_enabled && (key >= 1 && key <= 4);
-	if(do_ripple){
-		led_ripple_start(key);
+	if(button_flash_enabled && (key >= 1 && key <= 4)){
+		takeover_start((uint8_t)(key - 1));
 	}
 	if(key < 6){
 		for(int x=keymapstarts[key-1]+1; x<keymapstarts[key]; x+=2){
@@ -132,8 +131,5 @@ void send_keys(uint8_t key){
 				}
 			}
 		}
-	}
-	if(do_ripple){
-		led_ripple_finish();
 	}
 }

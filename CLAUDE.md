@@ -51,6 +51,8 @@ The `millis` variable is incremented every 1 ms by the RTC overflow callback (TI
 ### Key sending (`src/keys.c`)
 `send_keys(n)` replays the keymap stored in EEPROM for button n (1–4) or slider direction (5–6). The keymap is a packed byte array: each entry is `[modifier, keycode]`. Modifier byte `0xF0` signals a media key. The keymap is loaded from EEPROM into `keymap[]` at startup; `keymapstarts[]` indexes the start of each button's entries.
 
+On button press, if `button_flash_enabled`, `send_keys` calls `takeover_start(key-1)` to fire the LED animation. The Python bridges call `badge.set_button_flash(False)` when they take ownership of LEDs so the firmware animation doesn't corrupt bridge-managed colors.
+
 ### Serial console (`src/serialconsole.c`)
 Drives a text menu over USB CDC for configuring LED colors, keymaps, and viewing badge stats. Menu state machine lives in `serialConsoleState`.
 
@@ -62,7 +64,11 @@ Drives a text menu over USB CDC for configuring LED colors, keymaps, and viewing
 `0x01` never appears in normal menu traffic, so this is safe to inject while the console is open.
 
 ### LED / PWM (`src/pwm.c`)
-`led_set_color(n, rgb[3])` drives the RGB LEDs via PWM. `led_on()` / `led_off()` toggle individual color pins. Button press flashes the LED white briefly; color is restored from `ledvalues[]` after.
+`led_set_resting_color(n, rgb[3])` sets a persistent "resting" color for an LED — it writes a shadow value and only drives hardware immediately when no takeover animation is running. Use this instead of `led_set_color` for any state you want to survive the animation.
+
+`takeover_start(src_0)` (0-based button index) begins the non-blocking button-press animation: the pressed LED fires a bright flash, adjacent LEDs get an additive color blend, then everything cross-fades back to resting values over ~200ms. `takeover_tick()` advances the animation each main-loop iteration and returns `true` while active.
+
+The serial console M/U/X/L commands all call `led_set_resting_color` so mute-state LEDs survive button presses.
 
 ### Badge-to-badge comms (`src/comms.c`)
 Six SERCOM USART instances (top, right, bottom, left, usba, usbc) implement a badge mesh for multi-player games and the DEF CON challenge.
@@ -73,20 +79,35 @@ Simon Says (solo and multiplayer) and Whack-a-Mole (solo and multiplayer). Enter
 ### EEPROM layout (`src/main.h`)
 EEPROM is emulated in RWW flash (260-byte max). Layout defined by `EEP_*` constants. `FIRMWARE_VERSION` triggers a full EEPROM reset on mismatch — only bump it when the layout changes.
 
-## Teams Mute Indicator Tool (`tools/`)
+## dc29-badge Python Package (`dc29/`)
 
-Python script that bridges the Microsoft Teams Local API (WebSocket on `localhost:8124`) to the badge's serial port.
+Installable package (`pip install -e .`) that bridges Teams, Slack, Outlook, and 15+ other apps to the badge.
 
-**Run:**
+**Install:**
 ```bash
-python3 tools/teams_mute_indicator.py --port /dev/tty.usbmodem14201
+pip install -e ".[hotkey]"
 ```
 
-**Dependencies:**
+**Key commands:**
 ```bash
-pip install websockets pyserial
+dc29 flow -v              # Run all bridges (Teams + Slack + Outlook + 15 app pages)
+dc29 start                # Run all bridges + TUI in one process
+dc29 clear-keys           # Zero all EEPROM keymaps (fix double-injection issues)
+dc29 diagnose             # Show EEPROM keymaps, active app, --watch button events
+dc29 tui                  # Launch TUI only (no bridges)
+dc29 autostart install    # Install launchd agent for login autostart
 ```
 
-First run triggers a Teams pairing dialog. The token is saved to `~/.dc29_teams_token`. See `tools/TEAMS_MUTE_SETUP.md` for full setup, autostart via `launchd`, and troubleshooting.
+**Teams pairing (first run):**
+1. Kill Elgato Stream Deck if running — it holds port 8124 (`killall "Stream Deck"`)
+2. Delete any stale token: `rm ~/.dc29_teams_token`
+3. In Teams → Settings → Privacy → Third-party app API: remove DC29 from Allowed/Blocked lists
+4. **Join a Teams meeting** (pairing only works when `canPair=true`, which requires an active call)
+5. Run `dc29 flow -v` — Teams shows a "New connection request" dialog → click Allow
+6. Token saved to `~/.dc29_teams_token`; subsequent runs connect automatically
 
-**Mac shortcut note:** Teams on macOS uses `Cmd+Shift+M` to toggle mute. Set the badge macro using `[gui][shift]m`, not `[ctrl][shift]m` (which is the Windows shortcut).
+**EEPROM double-injection:** If a button fires both a pynput shortcut AND a firmware HID keymap simultaneously, run `dc29 clear-keys` to zero all EEPROM entries. Use `dc29 diagnose` to check keymap state.
+
+**FocusBridge scaling:** All focus-detecting bridges share a single osascript call via a TTL cache (`_get_active_app()` in `bridges/focus.py`). Without this, 15+ concurrent calls flood macOS System Events and all time out. Do not revert this cache.
+
+See `tools/TEAMS_MUTE_SETUP.md` for full Teams setup walkthrough.

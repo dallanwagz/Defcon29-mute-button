@@ -1,6 +1,7 @@
 """
 dc29/tui/app.py — Textual TUI for the DEF CON 29 badge macro-keypad.
 
+
 Layout (single screen, tabbed):
 
   ┌─ DC29 Badge  ●  /dev/tty.usbmodem14201 ─────────────── v1.0.0  ?=help  q=quit ─┐
@@ -26,6 +27,7 @@ every handler runs on the event-loop thread.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING, Optional
 
 from textual import on
@@ -190,6 +192,65 @@ class PageChangeMessage(Message):
     def __init__(self, page: Optional[BridgePage]) -> None:
         super().__init__()
         self.page = page
+
+
+class LogLineMessage(Message):
+    """Fired by TuiLogHandler to route Python log records into the Log tab."""
+
+    def __init__(self, markup: str, levelno: int) -> None:
+        super().__init__()
+        self.markup = markup
+        self.levelno = levelno
+
+
+# ---------------------------------------------------------------------------
+# TuiLogHandler — routes Python logging into the TUI Log tab
+# ---------------------------------------------------------------------------
+
+
+class TuiLogHandler(logging.Handler):
+    """A logging.Handler that posts records as LogLineMessage to a BadgeTUI.
+
+    Install via ``BadgeTUI.install_log_handler()``.  Remove via
+    ``BadgeTUI.remove_log_handler()`` or the handler returned from install.
+    """
+
+    _LEVEL_MARKUP = {
+        logging.DEBUG:    "[dim]",
+        logging.INFO:     "",
+        logging.WARNING:  "[yellow]",
+        logging.ERROR:    "[red]",
+        logging.CRITICAL: "[bold red]",
+    }
+    _LEVEL_MARKUP_CLOSE = {
+        logging.DEBUG:    "[/dim]",
+        logging.INFO:     "",
+        logging.WARNING:  "[/yellow]",
+        logging.ERROR:    "[/red]",
+        logging.CRITICAL: "[/bold red]",
+    }
+
+    def __init__(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        post_fn,
+    ) -> None:
+        super().__init__()
+        self._loop = loop
+        self._post_fn = post_fn
+        self.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            open_tag  = self._LEVEL_MARKUP.get(record.levelno, "")
+            close_tag = self._LEVEL_MARKUP_CLOSE.get(record.levelno, "")
+            markup = f"{open_tag}{msg}{close_tag}" if open_tag else msg
+            self._loop.call_soon_threadsafe(
+                self._post_fn, LogLineMessage(markup, record.levelno)
+            )
+        except Exception:
+            self.handleError(record)
 
 
 # ---------------------------------------------------------------------------
@@ -890,6 +951,14 @@ class _ApplyLEDMessage(Message):
 class LEDsTab(Container):
     """Tab 3: LED color editor."""
 
+    # Factory defaults matching reset_eeprom() in firmware/main.c
+    _FACTORY_DEFAULTS: dict[int, tuple[int, int, int]] = {
+        1: (255, 0, 0),
+        2: (0, 255, 0),
+        3: (0, 0, 255),
+        4: (127, 127, 127),
+    }
+
     DEFAULT_CSS = """
     LEDsTab {
         padding: 1 2;
@@ -904,7 +973,7 @@ class LEDsTab(Container):
         margin-bottom: 1;
     }
     LEDsTab #presets {
-        height: 5;
+        height: 8;
         margin-bottom: 1;
     }
     LEDsTab #presets Label {
@@ -918,6 +987,10 @@ class LEDsTab(Container):
     }
     LEDsTab #preset-buttons Button {
         margin-right: 1;
+    }
+    LEDsTab #reset-defaults {
+        margin-top: 1;
+        width: auto;
     }
     """
 
@@ -937,11 +1010,19 @@ class LEDsTab(Container):
             with Horizontal(id="preset-buttons"):
                 for name in ("red", "green", "blue", "cyan", "magenta", "yellow", "white", "off"):
                     yield Button(name.capitalize(), id=f"preset-{name}")
+            yield Button("↺ Reset to defaults", id="reset-defaults", variant="warning")
 
         for i in range(1, 5):
             row = LEDRow(i)
             self._led_rows.append(row)
             yield row
+
+    @on(Button.Pressed, "#reset-defaults")
+    def _reset_defaults(self) -> None:
+        for i, row in enumerate(self._led_rows, start=1):
+            rgb = self._FACTORY_DEFAULTS[i]
+            row.set_values(*rgb)
+            self.app.post_message(_ApplyLEDMessage(i, *rgb))
 
     @on(Button.Pressed)
     def _preset_pressed(self, event: Button.Pressed) -> None:
@@ -1257,9 +1338,15 @@ class BadgeTUI(App):
     # Constructor
     # ------------------------------------------------------------------
 
-    def __init__(self, badge: BadgeAPI) -> None:
+    def __init__(
+        self,
+        badge: BadgeAPI,
+        *,
+        pre_wire_loop: Optional[asyncio.AbstractEventLoop] = None,
+    ) -> None:
         super().__init__()
         self._badge = badge
+        self._callbacks_wired: bool = False
         self._flash_enabled: bool = True
         self._effect_mode: int = 0
         # Cache of current LED colors: {1: (r,g,b), ...}
@@ -1269,6 +1356,11 @@ class BadgeTUI(App):
             3: (0, 0, 0),
             4: (0, 0, 0),
         }
+        # Pre-wire callbacks when a loop is provided (dc29 start mode).
+        # This establishes the TUI as the base of the bridge button-hook chain
+        # so that bridges installed later can call through to the TUI for logging.
+        if pre_wire_loop is not None:
+            self._wire_badge_callbacks(loop=pre_wire_loop)
 
     # ------------------------------------------------------------------
     # Compose
@@ -1294,17 +1386,21 @@ class BadgeTUI(App):
     # ------------------------------------------------------------------
 
     def on_mount(self) -> None:
-        """Wire badge callbacks and update title."""
-        self._wire_badge_callbacks()
+        """Wire badge callbacks (if not already pre-wired) and update title."""
+        if not self._callbacks_wired:
+            self._wire_badge_callbacks()
         self._update_title()
         # Query existing keys from badge if connected
         if self._badge.connected:
             for i in range(1, 5):
                 self._badge.query_key(i)
 
-    def _wire_badge_callbacks(self) -> None:
+    def _wire_badge_callbacks(
+        self, loop: Optional[asyncio.AbstractEventLoop] = None
+    ) -> None:
         """Attach all badge callbacks, forwarding to the event loop via call_soon_threadsafe."""
-        loop = asyncio.get_event_loop()
+        if loop is None:
+            loop = asyncio.get_event_loop()
 
         def _ts(fn):
             """Wrap fn so it's called on the event loop thread."""
@@ -1352,6 +1448,7 @@ class BadgeTUI(App):
         self._badge.on_connect = on_connect
         self._badge.on_disconnect = on_disconnect
         self._badge.on_page_change = on_page_change
+        self._callbacks_wired = True
 
     def _update_title(self) -> None:
         status = "●" if self._badge.connected else "○"
@@ -1435,6 +1532,9 @@ class BadgeTUI(App):
             self._log_event(f"[cyan]◈ Profile:[/] {page.name.upper()}")
         else:
             self._log_event("[dim]◈ Profile: none[/]")
+
+    def on_log_line_message(self, event: LogLineMessage) -> None:
+        self._log_event(event.markup)
 
     # ------------------------------------------------------------------
     # Internal LED/effect message handlers (from tab widgets)
@@ -1546,6 +1646,30 @@ class BadgeTUI(App):
     def action_quit(self) -> None:
         self._badge.close()
         self.exit()
+
+    # ------------------------------------------------------------------
+    # Log handler integration (used by dc29 start)
+    # ------------------------------------------------------------------
+
+    def install_log_handler(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        level: int = logging.DEBUG,
+    ) -> TuiLogHandler:
+        """Attach a TuiLogHandler to the root logger and return it.
+
+        Call this before starting bridges so their log output appears in the
+        TUI's Log tab instead of stderr.  Pass the handler to
+        ``remove_log_handler`` on shutdown.
+        """
+        handler = TuiLogHandler(loop, self.post_message)
+        handler.setLevel(level)
+        logging.getLogger().addHandler(handler)
+        return handler
+
+    def remove_log_handler(self, handler: TuiLogHandler) -> None:
+        """Detach a previously installed TuiLogHandler from the root logger."""
+        logging.getLogger().removeHandler(handler)
 
     # ------------------------------------------------------------------
     # Helpers

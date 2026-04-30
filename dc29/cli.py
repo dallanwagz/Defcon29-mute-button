@@ -542,6 +542,342 @@ async def _run_flow(
 
 
 # ---------------------------------------------------------------------------
+# start command — TUI + all bridges in one process
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def start(
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+    hotkey: Optional[str] = typer.Option(
+        None, "--toggle-hotkey",
+        help="Global hotkey for Teams mute toggle (pynput format).",
+        envvar="DC29_TOGGLE_HOTKEY",
+    ),
+    no_button_flash: bool = typer.Option(
+        False, "--no-button-flash",
+        help="Disable the LED ripple animation on button press.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Debug logging."),
+) -> None:
+    """Run all bridges + TUI in a single command (recommended).
+
+    Combines dc29 flow and dc29 ui into one process sharing a single serial
+    connection.  The TUI shows live context (active app profile, button meanings,
+    badge status) while all bridges run in the background.
+
+    \b
+    Press q in the TUI to stop everything cleanly.
+
+    Prerequisites (same as dc29 flow):
+    \b
+    * pip install 'dc29-badge[tui,hotkey]'
+    * Run dc29 clear-keys once to remove EEPROM macros (prevents double-injection)
+    * macOS: grant Accessibility permission to your terminal app
+    """
+    try:
+        from dc29.tui.app import BadgeTUI  # noqa: F401 — validate import early
+    except ImportError:
+        typer.echo(
+            "The TUI requires Textual: pip install 'dc29-badge[tui]'",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    # Root logger level only — no basicConfig. Actual output goes to the TUI
+    # Log tab via TuiLogHandler installed in _run_start. Writing to stderr here
+    # would fight with Textual's terminal rendering.
+    logging.getLogger().setLevel(logging.DEBUG if verbose else logging.INFO)
+
+    from dc29.config import get_config
+
+    cfg = get_config()
+    resolved_port = _resolve_port(port or cfg.badge_port)
+    resolved_hotkey = hotkey if hotkey is not None else cfg.teams_toggle_hotkey
+
+    try:
+        asyncio.run(
+            _run_start(
+                port=resolved_port,
+                toggle_hotkey=resolved_hotkey or None,
+                brightness=cfg.badge_brightness,
+                button_flash=not no_button_flash,
+            )
+        )
+    except KeyboardInterrupt:
+        pass
+
+
+async def _run_start(
+    port: str,
+    toggle_hotkey: Optional[str],
+    brightness: float,
+    button_flash: bool,
+) -> None:
+    """Run TUI + all bridges sharing one BadgeAPI instance."""
+    from dc29.badge import BadgeAPI
+    from dc29.tui.app import BadgeTUI
+    from dc29.bridges.teams import TeamsBridge
+    from dc29.bridges.slack import SlackBridge
+    from dc29.bridges.outlook import OutlookBridge
+    from dc29.bridges.generic import GenericFocusBridge
+    from dc29.bridges.registry import ALL_PAGES
+
+    _log = logging.getLogger(__name__)
+
+    badge = BadgeAPI(port, brightness=brightness)
+    if not button_flash:
+        badge.send_raw(bytes([0x01, ord("F"), 0]))
+
+    # Build all bridges (same priority order as _run_flow)
+    generic_bridges = [GenericFocusBridge(badge, page_def) for page_def in ALL_PAGES]
+    slack_bridge   = SlackBridge(badge)
+    outlook_bridge = OutlookBridge(badge)
+    teams_bridge   = TeamsBridge(badge, toggle_hotkey=toggle_hotkey)
+    all_bridges    = generic_bridges + [slack_bridge, outlook_bridge, teams_bridge]
+
+    # Pre-wire TUI badge callbacks NOW so the TUI is the base of the
+    # button-hook chain.  Bridge tasks installed below wrap on top of it,
+    # and unhandled button presses fall through to the TUI for logging.
+    loop = asyncio.get_running_loop()
+    tui = BadgeTUI(badge, pre_wire_loop=loop)
+
+    # Route all Python logging into the TUI Log tab so stderr stays clean.
+    log_handler = tui.install_log_handler(loop, level=logging.getLogger().level)
+
+    _log.info(
+        "Starting TUI + %d app bridges + Teams + Slack + Outlook",
+        len(generic_bridges),
+    )
+
+    # Start all bridge tasks — they install their button hooks on top of the TUI.
+    bridge_tasks = [
+        asyncio.create_task(bridge.run(), name=bridge.page.name)
+        for bridge in all_bridges
+    ]
+
+    try:
+        await tui.run_async()
+    finally:
+        tui.remove_log_handler(log_handler)
+        for t in bridge_tasks:
+            t.cancel()
+        await asyncio.gather(*bridge_tasks, return_exceptions=True)
+        badge.close()
+
+
+# ---------------------------------------------------------------------------
+# clear-keys command
+# ---------------------------------------------------------------------------
+
+
+@app.command("clear-keys")
+def clear_keys(
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+) -> None:
+    """Clear all EEPROM key macros — set buttons 1–4 to no-op.
+
+    When dc29 flow is running, Python bridges inject shortcuts via pynput.
+    Any non-zero EEPROM macro fires as a HID keypress at the same time,
+    causing double-injection (two keystrokes reach macOS per button press).
+
+    Run this once after setting up dc29 flow.  The badge still sends button
+    events over serial so Python bridges work normally; it just won't inject
+    its own HID keystrokes on top.
+
+    To restore a keymap, use dc29 set-key.
+    """
+    import threading
+    from dc29.badge import BadgeAPI
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+
+    deadline = time.monotonic() + 5.0
+    while not badge.connected and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+    if not badge.connected:
+        typer.echo(f"Could not open {resolved_port}.", err=True)
+        badge.close()
+        raise typer.Exit(1)
+
+    ack_count = [0]
+    ack_event = threading.Event()
+
+    def _on_ack(n: int) -> None:
+        typer.echo(f"  Button {n} cleared")
+        ack_count[0] += 1
+        if ack_count[0] >= 4:
+            ack_event.set()
+
+    badge.on_key_ack = _on_ack
+
+    typer.echo("Clearing EEPROM keymaps for buttons 1–4…")
+    for btn in range(1, 5):
+        badge.set_key(btn, 0, 0)
+        time.sleep(0.1)
+
+    if ack_event.wait(timeout=5.0):
+        typer.echo("\nAll keymaps cleared.  Firmware will no longer inject HID keypresses.")
+        typer.echo("Run 'dc29 flow' — shortcuts are now handled exclusively by the bridges.")
+    else:
+        typer.echo(
+            f"\nReceived {ack_count[0]}/4 ACKs within 5 s.  "
+            "Commands were sent; badge may need newer firmware for full ACK support.",
+            err=True,
+        )
+
+    badge.close()
+
+
+# ---------------------------------------------------------------------------
+# diagnose command
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def diagnose(
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+    watch: bool = typer.Option(
+        False, "--watch", "-w",
+        help="After the summary, stream button events until Ctrl-C.",
+    ),
+) -> None:
+    """Diagnose badge configuration: keymaps, focused app, and button events.
+
+    Prints a snapshot of EEPROM keymaps and the currently focused app, then
+    optionally streams button events with decoded HID payloads.
+
+    Typical troubleshooting workflow:
+
+    \b
+    1. dc29 diagnose               — check for leftover EEPROM macros
+    2. dc29 clear-keys             — zero them out (eliminates double-injection)
+    3. dc29 diagnose --watch       — press each button; verify only serial events fire
+    4. dc29 flow -v                — run all bridges; watch shortcut-injection log lines
+    """
+    import threading
+    from dc29.badge import BadgeAPI
+    from dc29.bridges.focus import _get_active_app
+
+    resolved_port = _resolve_port(port)
+
+    # --- EEPROM keymap query ---
+    console.rule("[bold]EEPROM Keymaps")
+    results: dict[int, tuple[int, int]] = {}
+    events = {btn: threading.Event() for btn in range(1, 5)}
+
+    badge = BadgeAPI(resolved_port)
+
+    def _on_reply(n: int, mod: int, kc: int) -> None:
+        results[n] = (mod, kc)
+        if n in events:
+            events[n].set()
+
+    badge.on_key_reply = _on_reply
+
+    deadline = time.monotonic() + 5.0
+    while not badge.connected and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+    if not badge.connected:
+        typer.echo(f"Could not open {resolved_port}.", err=True)
+        badge.close()
+        raise typer.Exit(1)
+
+    for btn in range(1, 5):
+        badge.query_key(btn)
+        time.sleep(0.05)
+
+    deadline_r = time.monotonic() + 4.0
+    for btn in range(1, 5):
+        remaining = max(0.0, deadline_r - time.monotonic())
+        events[btn].wait(timeout=remaining)
+
+    has_macros = False
+    table = Table(box=box.SIMPLE_HEAD)
+    table.add_column("Button", style="bold cyan", justify="center")
+    table.add_column("Modifier", style="yellow")
+    table.add_column("Keycode", style="green")
+    table.add_column("Status")
+
+    for btn in range(1, 5):
+        if btn in results:
+            mod, kc = results[btn]
+            mod_str = modifier_name(mod)
+            kc_str = keycode_name(kc, mod)
+            if mod == 0 and kc == 0:
+                status = "[dim]no-op (safe)[/dim]"
+            else:
+                has_macros = True
+                status = "[red bold]⚠ ACTIVE — will double-inject![/red bold]"
+            table.add_row(str(btn), mod_str, kc_str, status)
+        else:
+            table.add_row(str(btn), "—", "—", "[dim]no reply[/dim]")
+
+    console.print(table)
+
+    if has_macros:
+        console.print(
+            "[yellow]One or more buttons have EEPROM macros that will fire as HID\n"
+            "keypresses alongside dc29 flow's pynput injection.\n"
+            "Fix: run  [bold]dc29 clear-keys[/bold]  then restart dc29 flow.[/yellow]\n"
+        )
+    else:
+        console.print("[green]✓ No active EEPROM macros — no double-injection risk.[/green]\n")
+
+    # --- Focused app ---
+    console.rule("[bold]Active App Detection")
+    app_name, win_title = _get_active_app()
+    console.print(f"  Process : [cyan]{app_name or '(empty)'}[/cyan]")
+    console.print(f"  Window  : [cyan]{win_title or '(empty)'}[/cyan]\n")
+
+    if not watch:
+        badge.close()
+        return
+
+    # --- Watch mode ---
+    console.rule("[bold]Button Watch  (press Ctrl-C to stop)")
+    console.print("Press badge buttons — events will appear here.\n")
+
+    def _on_button(n: int, mod: int, kc: int) -> None:
+        app_now, title_now = _get_active_app()
+        mod_str = modifier_name(mod)
+        kc_str = keycode_name(kc, mod)
+        if mod == 0 and kc == 0:
+            hid_str = "[dim]no HID keypress[/dim]"
+        else:
+            hid_str = f"[red]HID → {mod_str}+{kc_str}[/red]"
+        console.print(
+            f"  [bold cyan]B{n}[/bold cyan]  {hid_str}"
+            f"  |  app=[yellow]{app_now}[/yellow]  win=[dim]{title_now[:50]}[/dim]"
+        )
+
+    badge.on_button_press = _on_button
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        badge.close()
+
+
+# ---------------------------------------------------------------------------
 # set-key command
 # ---------------------------------------------------------------------------
 

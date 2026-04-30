@@ -16,7 +16,7 @@ Default button layout
      - LED color
    * - 1
      - **Delete email**
-     - Cmd+Delete / Delete
+     - Cmd+Backspace / Delete
      - **red** (always on)
    * - 2
      - Reply
@@ -83,7 +83,7 @@ _SYSTEM = platform.system()
 # -----------------------------------------------------------------
 
 _SHORTCUTS_MAC: dict[str, tuple[list[str], object]] = {
-    "delete":    (["cmd"], "delete"),
+    "delete":    (["cmd"], "backspace"),
     "reply":     (["cmd"], "r"),
     "reply-all": (["cmd", "shift"], "r"),
     "forward":   (["cmd"], "j"),
@@ -110,7 +110,7 @@ _DEFAULT_BUTTON_ACTIONS: dict[int, str] = {
 _DEFAULT_LED_COLORS: dict[str, tuple[int, int, int]] = {
     # Default layout: B1=delete, B2=reply, B3=reply-all, B4=forward
     # Positional semantics land almost perfectly here.
-    "delete":    POSITION_ACTIVE[1],  # warm red  — destructive ✓
+    "delete":    (220, 0, 0),         # pure red  — destructive ✓
     "reply":     POSITION_ACTIVE[2],  # cool blue — direct communication ✓
     "reply-all": POSITION_ACTIVE[3],  # amber     — reach everyone ✓
     "forward":   POSITION_ACTIVE[4],  # green     — send forward / create new thread ✓
@@ -192,6 +192,7 @@ class OutlookBridge(FocusBridge):
         self._inject(action)
         if action == "delete":
             self._start_delete_pulse()
+            asyncio.create_task(self._play_delete_sound(), name="outlook-delete-sound")
 
     # ------------------------------------------------------------------
     # Delete satisfaction animation
@@ -204,6 +205,26 @@ class OutlookBridge(FocusBridge):
         self._pulse_task = asyncio.create_task(
             self._delete_pulse(), name="outlook-delete-pulse"
         )
+
+    async def _play_delete_sound(self) -> None:
+        """Play an encouraging two-note ascending jingle on macOS via afplay."""
+        if _SYSTEM != "Darwin":
+            return
+        sound = "/System/Library/Sounds/Tink.aiff"
+        try:
+            p = await asyncio.create_subprocess_exec(
+                "afplay", sound, "-r", "0.85",
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+            )
+            await p.wait()
+            await asyncio.sleep(0.07)
+            p = await asyncio.create_subprocess_exec(
+                "afplay", sound, "-r", "1.4",
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+            )
+            await p.wait()
+        except Exception as exc:
+            log.debug("Delete sound failed: %s", exc)
 
     async def _delete_pulse(self) -> None:
         """Breathe-pulse LEDs 2–4 with the pulse color, then restore page LEDs."""
@@ -249,16 +270,19 @@ class OutlookBridge(FocusBridge):
 
         mods, key = shortcut
         if action == "delete" and _SYSTEM == "Darwin":
-            # Cmd+Delete = "move to trash" on macOS Outlook
+            # Cmd+Backspace = "move to trash" on macOS Outlook
+            # Key.backspace = the Mac "Delete" key; Key.delete = forward-delete (fn+Delete)
+            log.info("Outlook: injecting Cmd+Backspace (move to trash)")
             try:
                 from pynput.keyboard import Controller, Key
                 kb = Controller()
                 with kb.pressed(Key.cmd):
-                    kb.press(Key.delete)
-                    kb.release(Key.delete)
+                    kb.press(Key.backspace)
+                    kb.release(Key.backspace)
             except Exception as exc:
                 log.warning("Shortcut injection failed: %s", exc)
         elif action == "delete" and _SYSTEM == "Windows":
+            log.info("Outlook: injecting Delete")
             try:
                 from pynput.keyboard import Controller, Key
                 kb = Controller()
@@ -267,4 +291,5 @@ class OutlookBridge(FocusBridge):
             except Exception as exc:
                 log.warning("Shortcut injection failed: %s", exc)
         else:
+            log.info("Outlook: injecting %s+%s", "+".join(mods) if mods else "(no mod)", key)
             _press_shortcut(mods, key)

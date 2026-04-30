@@ -31,6 +31,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import platform
+import threading
+import time
 from abc import abstractmethod
 from typing import Optional
 
@@ -46,22 +48,42 @@ _SYSTEM = platform.system()
 # Platform-level active-app detection
 # ---------------------------------------------------------------------------
 
+# Shared TTL cache so concurrent FocusBridge polls share a single osascript call.
+# Without this, 15+ bridges hitting run_in_executor simultaneously flood System
+# Events and all calls time out.
+_focus_lock = threading.Lock()
+_focus_cache: tuple[str, str] = ("", "")
+_focus_cache_at: float = 0.0
+_FOCUS_CACHE_TTL: float = 0.35  # seconds
+
+
 def _get_active_app() -> tuple[str, str]:
     """Return ``(app_name, window_title)`` for the frontmost application.
 
     Both strings may be empty on failure.  ``window_title`` is only populated
     on a best-effort basis — it is empty on Linux unless ``xdotool`` is installed.
+
+    Results are cached for up to 350 ms so concurrent bridge polls share a
+    single subprocess call rather than flooding the OS.
     """
-    try:
-        if _SYSTEM == "Darwin":
-            return _macos_active_app()
-        elif _SYSTEM == "Windows":
-            return _windows_active_app()
-        elif _SYSTEM == "Linux":
-            return _linux_active_app()
-    except Exception:
-        pass
-    return ("", "")
+    global _focus_cache, _focus_cache_at
+    with _focus_lock:
+        if time.monotonic() - _focus_cache_at < _FOCUS_CACHE_TTL:
+            return _focus_cache
+        try:
+            if _SYSTEM == "Darwin":
+                result = _macos_active_app()
+            elif _SYSTEM == "Windows":
+                result = _windows_active_app()
+            elif _SYSTEM == "Linux":
+                result = _linux_active_app()
+            else:
+                result = ("", "")
+        except Exception:
+            result = ("", "")
+        _focus_cache = result
+        _focus_cache_at = time.monotonic()
+        return result
 
 
 def _macos_active_app() -> tuple[str, str]:
@@ -227,11 +249,12 @@ class FocusBridge(BaseBridge):
         """Poll focus state forever, activating the page when the target app is in front."""
         self._loop = asyncio.get_running_loop()
         self._install_button_hook()
+        self._saved_effect: int = 0
         try:
             focused = False
             last_in_meeting = False
             while True:
-                now_focused = self._check_focus()
+                now_focused = await self._loop.run_in_executor(None, self._check_focus)
                 in_meeting = self._badge.state.mute_state != MuteState.NOT_IN_MEETING
 
                 self._is_currently_focused = now_focused
@@ -239,6 +262,13 @@ class FocusBridge(BaseBridge):
                 if now_focused and not focused:
                     log.info("%s gained focus", self.page.name)
                     if not in_meeting:
+                        # Suspend any running effect so bridge LED colors aren't overwritten.
+                        self._saved_effect = self._badge.state.effect_mode
+                        if self._saved_effect != 0:
+                            self._badge.set_effect_mode(0)
+                        # Suppress the firmware's white takeover animation on button press —
+                        # bridge manages its own LEDs and the flash would corrupt them.
+                        self._badge.set_button_flash(False)
                         asyncio.create_task(
                             self._context_flash(),
                             name=f"{self.page.name}-context-flash",
@@ -251,6 +281,11 @@ class FocusBridge(BaseBridge):
                     self._clear_page_leds()
                     if not in_meeting:
                         self._badge.set_current_page(None)
+                        # Restore effect mode that was active before this bridge took over.
+                        if self._saved_effect != 0:
+                            self._badge.set_effect_mode(self._saved_effect)
+                            self._saved_effect = 0
+                        self._badge.set_button_flash(True)
                     await self.on_focus_lost()
 
                 elif now_focused and last_in_meeting and not in_meeting:

@@ -1,23 +1,25 @@
 /*
- * pwm.c
- *
- *  Author: compukidmike
- */ 
+ * pwm.c — LED PWM, buzzer, and button-press takeover animation.
+ */
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <asf.h>
 #include "pwm.h"
 
 struct tcc_module tcc0_instance;
 struct tcc_module tcc1_instance;
 struct tcc_module tcc2_instance;
-struct tc_module tc3_instance;
-struct tc_module tc4_instance;
-struct tc_module tc5_instance;
+struct tc_module  tc3_instance;
+struct tc_module  tc4_instance;
+struct tc_module  tc5_instance;
 
 uint8_t ledvalues[12] = {0};
 
-extern bool USBPower;
+extern bool              USBPower;
+extern volatile uint32_t millis;
+
+/* ─── pwm_init ──────────────────────────────────────────────────────────── */
 
 void pwm_init(void){
 	struct tcc_config config_tcc0;
@@ -48,7 +50,7 @@ void pwm_init(void){
 	config_tcc0.counter.clock_source = GCLK_GENERATOR_0;
 	tcc_init(&tcc0_instance, TCC0, &config_tcc0);
 	tcc_enable(&tcc0_instance);
-	
+
 	struct tcc_config config_tcc1;
 	tcc_get_config_defaults(&config_tcc1, TCC1);
 	config_tcc1.counter.period = 256;
@@ -79,18 +81,17 @@ void pwm_init(void){
 	config_tcc2.pins.wave_out_pin_mux[0] = PINMUX_PA00E_TCC2_WO0;
 	config_tcc2.run_in_standby = true;
 	config_tcc2.counter.clock_source = GCLK_GENERATOR_3;
-	//config_tcc2.double_buffering_enabled = false;
 	tcc_init(&tcc2_instance, TCC2, &config_tcc2);
 	tcc_enable(&tcc2_instance);
 	tcc_stop_counter(&tcc2_instance);
-	
+
 	struct tc_config config_tc3;
 	tc_get_config_defaults(&config_tc3);
 	config_tc3.counter_size = TC_COUNTER_SIZE_8BIT;
 	config_tc3.wave_generation = TC_WAVE_GENERATION_NORMAL_PWM_MODE;
 	config_tc3.clock_source = GCLK_GENERATOR_0;
 	config_tc3.counter_8_bit.period = 255;
-	config_tc3.waveform_invert_output = 3; //invert both channels
+	config_tc3.waveform_invert_output = 3;
 	config_tc3.pwm_channel[0].enabled = true; //LED3G
 	config_tc3.pwm_channel[0].pin_out = PIN_PA18E_TC3_WO0;
 	config_tc3.pwm_channel[0].pin_mux = PINMUX_PA18E_TC3_WO0;
@@ -100,14 +101,14 @@ void pwm_init(void){
 	config_tc3.run_in_standby = true;
 	tc_init(&tc3_instance, TC3, &config_tc3);
 	tc_enable(&tc3_instance);
-	
+
 	struct tc_config config_tc4;
 	tc_get_config_defaults(&config_tc4);
 	config_tc4.counter_size = TC_COUNTER_SIZE_8BIT;
 	config_tc4.wave_generation = TC_WAVE_GENERATION_NORMAL_PWM_MODE;
 	config_tc4.clock_source = GCLK_GENERATOR_0;
 	config_tc4.counter_8_bit.period = 255;
-	config_tc4.waveform_invert_output = 3; //invert both channels
+	config_tc4.waveform_invert_output = 3;
 	config_tc4.pwm_channel[0].enabled = true; //LED1B
 	config_tc4.pwm_channel[0].pin_out = PIN_PB08E_TC4_WO0;
 	config_tc4.pwm_channel[0].pin_mux = PINMUX_PB08E_TC4_WO0;
@@ -117,14 +118,14 @@ void pwm_init(void){
 	config_tc4.run_in_standby = true;
 	tc_init(&tc4_instance, TC4, &config_tc4);
 	tc_enable(&tc4_instance);
-	
+
 	struct tc_config config_tc5;
 	tc_get_config_defaults(&config_tc5);
 	config_tc5.counter_size = TC_COUNTER_SIZE_8BIT;
 	config_tc5.wave_generation = TC_WAVE_GENERATION_NORMAL_PWM_MODE;
 	config_tc5.clock_source = GCLK_GENERATOR_0;
 	config_tc5.counter_8_bit.period = 255;
-	config_tc5.waveform_invert_output = 3; //invert both channels
+	config_tc5.waveform_invert_output = 3;
 	config_tc5.pwm_channel[0].enabled = true; //LED3B
 	config_tc5.pwm_channel[0].pin_out = PIN_PB10E_TC5_WO0;
 	config_tc5.pwm_channel[0].pin_mux = PINMUX_PB10E_TC5_WO0;
@@ -136,50 +137,27 @@ void pwm_init(void){
 	tc_enable(&tc5_instance);
 }
 
+/* ─── LED primitives ────────────────────────────────────────────────────── */
+
 void led_set_brightness(leds led, uint8_t brightness){
 	if(!USBPower){
-		brightness = brightness/5; //20% brightness to save power
+		brightness = brightness/5;
 	}
 	ledvalues[led] = brightness;
 	switch(led){
-		case LED1R:
-			tcc_set_compare_value(&tcc0_instance, 0, brightness);
-			break;
-		case LED1G:
-			tcc_set_compare_value(&tcc1_instance, 0, brightness);
-			break;
-		case LED1B:
-			tc_set_compare_value(&tc4_instance, 0, brightness);
-			break;
-		case LED2R:
-			tcc_set_compare_value(&tcc0_instance, 1, brightness);
-			break;
-		case LED2G:
-			tcc_set_compare_value(&tcc1_instance, 1, brightness);
-			break;
-		case LED2B:
-			tc_set_compare_value(&tc4_instance, 1, brightness);
-			break;
-		case LED3R:
-			tcc_set_compare_value(&tcc0_instance, 2, brightness);
-			break;
-		case LED3G:
-			tc_set_compare_value(&tc3_instance, 0, brightness);
-			break;
-		case LED3B:
-			tc_set_compare_value(&tc5_instance, 0, brightness);
-			break;
-		case LED4R:
-			tcc_set_compare_value(&tcc0_instance, 3, brightness);
-			break;
-		case LED4G:
-			tc_set_compare_value(&tc3_instance, 1, brightness);
-			break;
-		case LED4B:
-			tc_set_compare_value(&tc5_instance, 1, brightness);
-			break;
-		default:
-			break;
+		case LED1R: tcc_set_compare_value(&tcc0_instance, 0, brightness); break;
+		case LED1G: tcc_set_compare_value(&tcc1_instance, 0, brightness); break;
+		case LED1B: tc_set_compare_value(&tc4_instance, 0, brightness);   break;
+		case LED2R: tcc_set_compare_value(&tcc0_instance, 1, brightness); break;
+		case LED2G: tcc_set_compare_value(&tcc1_instance, 1, brightness); break;
+		case LED2B: tc_set_compare_value(&tc4_instance, 1, brightness);   break;
+		case LED3R: tcc_set_compare_value(&tcc0_instance, 2, brightness); break;
+		case LED3G: tc_set_compare_value(&tc3_instance, 0, brightness);   break;
+		case LED3B: tc_set_compare_value(&tc5_instance, 0, brightness);   break;
+		case LED4R: tcc_set_compare_value(&tcc0_instance, 3, brightness); break;
+		case LED4G: tc_set_compare_value(&tc3_instance, 1, brightness);   break;
+		case LED4B: tc_set_compare_value(&tc5_instance, 1, brightness);   break;
+		default: break;
 	}
 }
 
@@ -204,135 +182,354 @@ void led_toggle(leds led){
 }
 
 void led_set_color(uint8_t led, uint8_t color[3]){
-	ledvalues[((led-1)*3)] = color[0];
-	led_set_brightness(((led-1)*3), color[0]);
+	ledvalues[((led-1)*3)]   = color[0];
+	led_set_brightness(((led-1)*3),   color[0]);
 	ledvalues[((led-1)*3)+1] = color[1];
 	led_set_brightness((((led-1)*3)+1), color[1]);
 	ledvalues[((led-1)*3)+2] = color[2];
 	led_set_brightness((((led-1)*3)+2), color[2]);
 }
 
-/*
- * Button press ripple animation — two-phase design:
- *
- *   led_ripple_start(key)  — snapshot + splash  (call before key sends)
- *   led_ripple_finish()    — fade + restore      (call after key sends)
- *
- * LED adjacency is circular: 1-2-3-4-1.  On press of button N:
- *   pressed    → boosted +55 per channel (clamped to 255)
- *   left/right → their stored color + 50% of pressed color (additive)
- *                creates color surprises: red neighbor + blue press → purple
- *   opposite   → 25% echo of pressed color (faint override)
- *
- * After key sends (~50-100ms), hold 40ms then 1-step crossfade, then restore.
- * Total animation ≈ 200-250 ms.
- *
- * If the pressed LED is dark (no page active), falls back to a plain white
- * flash on the pressed LED only — consistent with original behavior.
- */
+/* ─── Resting-color shadow ───────────────────────────────────────────────
+ * led_resting[0..3] holds the "non-animation" color for each LED.
+ * Updated by led_set_resting_color() only — never by animation rendering.
+ * Restored when the takeover animation ends.
+ * ────────────────────────────────────────────────────────────────────── */
 
-static uint8_t _ripple_saved[12];  /* snapshot of all LED values before splash */
+static uint8_t led_resting[4][3];
 
-void led_ripple_start(uint8_t key) {
-	if (key < 1 || key > 4) return;
+/* Forward-declare tk.active so led_set_resting_color can check it. */
+static bool takeover_active(void);
 
-	/* Snapshot. */
-	for (int i = 0; i < 12; i++) _ripple_saved[i] = ledvalues[i];
-
-	uint8_t idx = (uint8_t)((key - 1) * 3);
-	uint8_t pr  = _ripple_saved[idx];
-	uint8_t pg  = _ripple_saved[idx + 1];
-	uint8_t pb  = _ripple_saved[idx + 2];
-
-	if ((pr | pg | pb) == 0) {
-		/* Dark LED — plain white flash on pressed LED; finish() will restore. */
-		uint8_t white[3] = {200, 200, 200};
-		led_set_color(key, white);
-		return;
-	}
-
-	/* Circular neighbors (1-based). */
-	uint8_t left  = (uint8_t)(((key - 1 + 3) % 4) + 1);
-	uint8_t right = (uint8_t)((key % 4) + 1);
-	uint8_t opp   = (uint8_t)(((key - 1 + 2) % 4) + 1);
-
-	/* Pressed: boost +55 each channel, clamped. */
-	{
-		uint8_t f[3] = {
-			(uint8_t)(pr > 200 ? 255 : pr + 55),
-			(uint8_t)(pg > 200 ? 255 : pg + 55),
-			(uint8_t)(pb > 200 ? 255 : pb + 55)
-		};
-		led_set_color(key, f);
-	}
-
-	/* Left neighbor: additive blend — their color + half of pressed. */
-	{
-		uint8_t li = (uint8_t)((left - 1) * 3);
-		uint8_t c[3] = {
-			(uint8_t)(_ripple_saved[li]   + (pr >> 1) > 255 ? 255 : _ripple_saved[li]   + (pr >> 1)),
-			(uint8_t)(_ripple_saved[li+1] + (pg >> 1) > 255 ? 255 : _ripple_saved[li+1] + (pg >> 1)),
-			(uint8_t)(_ripple_saved[li+2] + (pb >> 1) > 255 ? 255 : _ripple_saved[li+2] + (pb >> 1))
-		};
-		led_set_color(left, c);
-	}
-
-	/* Right neighbor: same additive blend. */
-	{
-		uint8_t ri = (uint8_t)((right - 1) * 3);
-		uint8_t c[3] = {
-			(uint8_t)(_ripple_saved[ri]   + (pr >> 1) > 255 ? 255 : _ripple_saved[ri]   + (pr >> 1)),
-			(uint8_t)(_ripple_saved[ri+1] + (pg >> 1) > 255 ? 255 : _ripple_saved[ri+1] + (pg >> 1)),
-			(uint8_t)(_ripple_saved[ri+2] + (pb >> 1) > 255 ? 255 : _ripple_saved[ri+2] + (pb >> 1))
-		};
-		led_set_color(right, c);
-	}
-
-	/* Opposite: faint echo — 25% of pressed color. */
-	{
-		uint8_t echo[3] = {(uint8_t)(pr >> 2), (uint8_t)(pg >> 2), (uint8_t)(pb >> 2)};
-		led_set_color(opp, echo);
+/* Public: set LED color and record it as the resting state.
+ * If an animation is running the hardware write is deferred to animation-end;
+ * the shadow is always updated so restoration is correct. */
+void led_set_resting_color(uint8_t led, uint8_t color[3]){
+	uint8_t idx = led - 1;
+	if(idx > 3) return;
+	led_resting[idx][0] = color[0];
+	led_resting[idx][1] = color[1];
+	led_resting[idx][2] = color[2];
+	if(!takeover_active()){
+		led_set_color(led, color);
 	}
 }
 
-void led_ripple_finish(void) {
-	extern volatile uint32_t millis;
-	extern uint32_t lastUSBSendTime;
+/* ─── Buzzer ─────────────────────────────────────────────────────────────
+ * TCC2 is MATCH_FREQ mode on GCLK3 (8 MHz) with prescaler DIV256.
+ * TCC2 clock = 31 250 Hz.  Output frequency ≈ 15625 / compare_value Hz.
+ * ─────────────────────────────────────────────────────────────────────── */
 
-	/* Hold 40ms post-send so the splash reads as intentional, not a glitch. */
-	lastUSBSendTime = millis;
-	while (millis - lastUSBSendTime < 40);
+static uint32_t _buz_end = 0;
 
-	/* Crossfade step: midpoint between current ripple state and saved. */
-	for (int led = 1; led <= 4; led++) {
-		uint8_t ci = (uint8_t)((led - 1) * 3);
-		uint8_t mid[3] = {
-			(uint8_t)((ledvalues[ci]   + _ripple_saved[ci])   >> 1),
-			(uint8_t)((ledvalues[ci+1] + _ripple_saved[ci+1]) >> 1),
-			(uint8_t)((ledvalues[ci+2] + _ripple_saved[ci+2]) >> 1)
-		};
-		led_set_color(led, mid);
-	}
-	lastUSBSendTime = millis;
-	while (millis - lastUSBSendTime < 35);
-
-	/* Full restore. */
-	for (int led = 1; led <= 4; led++) {
-		uint8_t ci = (uint8_t)((led - 1) * 3);
-		uint8_t restore[3] = {_ripple_saved[ci], _ripple_saved[ci+1], _ripple_saved[ci+2]};
-		led_set_color(led, restore);
+static void _buzzer_tick(void){
+	if(_buz_end && (millis >= _buz_end)){
+		tcc_stop_counter(&tcc2_instance);
+		_buz_end = 0;
 	}
 }
 
-void buzzer_on(void){
-	tcc_set_compare_value(&tcc2_instance, 0, 64);
-
+/* Non-blocking: set frequency, start for duration_ms, return immediately. */
+void buzzer_play(uint16_t freq_hz, uint8_t duration_ms){
+	if(!freq_hz){ buzzer_cancel(); return; }
+	uint16_t cv = (uint16_t)(15625u / freq_hz);
+	if(cv < 1)   cv = 1;
+	if(cv > 255) cv = 255;
+	tcc_set_compare_value(&tcc2_instance, 0, (uint32_t)cv);
+	tcc_restart_counter(&tcc2_instance);
+	_buz_end = millis + duration_ms;
 }
 
-void buzzer_off(void){
-	tcc_set_compare_value(&tcc2_instance, 0, 0);
+void buzzer_cancel(void){
+	tcc_stop_counter(&tcc2_instance);
+	_buz_end = 0;
 }
 
-void buzzer_set_value(uint8_t value){
-	tcc_set_compare_value(&tcc2_instance, 0, value);
+/* Legacy wrappers kept for serialconsole compatibility */
+void buzzer_on(void)             { tcc_set_compare_value(&tcc2_instance, 0, 64); tcc_restart_counter(&tcc2_instance); }
+void buzzer_off(void)            { buzzer_cancel(); }
+void buzzer_set_value(uint8_t v) { tcc_set_compare_value(&tcc2_instance, 0, v); }
+
+
+/* ─── Takeover animation ─────────────────────────────────────────────────
+ *
+ * Four-phase button-press animation driven from the main loop via
+ * takeover_tick().  Total duration varies ~2.3–2.9 s by personality.
+ *
+ * Phase 1  IGNITION   300 ms  — source LED flashes twice; buzzer click
+ * Phase 2  INVASION  ~1050 ms — 3 victims conquered CW one at a time
+ * Phase 3  DOMINANCE  800 ms  — comet chase (2 full rotations)
+ * Phase 4  RESOLUTION 350 ms  — crescendo → blackout+thud → resting restore
+ *
+ * Personality is auto-detected from the invader LED's color at press time.
+ * ────────────────────────────────────────────────────────────────────── */
+
+typedef enum { PERS_CLASSIC = 0, PERS_DEVIL, PERS_ZEN, PERS_JOY } Personality;
+
+typedef struct {
+	uint16_t vic_dur_ms;   /* per-victim invasion window */
+	bool     no_decay;     /* Devil: victim stays 100% across sub-frames */
+	bool     ccw;          /* Devil: CCW dominance chase */
+	uint8_t  dim_pct;      /* dominance non-comet brightness % (0 = Joy overshoot) */
+	bool     white_flick;  /* Devil: white flash mid-crescendo */
+	bool     double_pulse; /* Joy: double pulse in crescendo */
+	uint16_t click_hz; uint8_t click_ms;
+	uint16_t thud_hz;  uint8_t thud_ms;
+} PersParams;
+
+static const PersParams PP[4] = {
+	/* CLASSIC */ {350, false, false, 40, false, false,  800, 30, 200, 60},
+	/* DEVIL   */ {280, true,  true,  20, true,  false, 1200, 25, 120, 80},
+	/* ZEN     */ {490, false, false, 40, false, false,  440, 40, 220, 70},
+	/* JOY     */ {315, false, false,  0, false, true,  1500, 25, 600, 50},
+};
+
+/* Sub-frame cumulative ms within each victim (7 entries, one per sub-frame).
+ * Sub-frames: odd index = invader@100%; even index = victim@VIC_PCT. */
+static const uint16_t SF_CUM[4][7] = {
+	/* CLASSIC */ { 60, 110, 160, 210, 260, 300, 350},
+	/* DEVIL   */ { 40,  80, 120, 160, 200, 240, 280},
+	/* ZEN     */ { 70, 140, 210, 280, 350, 420, 490},
+	/* JOY     */ { 60, 115, 165, 210, 250, 285, 315},
+};
+
+/* Victim LED brightness for sub-frames 1, 3, 5 (0-based: indices 1,3,5).
+ * Index into this table: sf/2 where sf is 1,3,5 → 0,1,2. */
+static const uint8_t VIC_PCT[4][3] = {
+	/* CLASSIC */ {100, 60, 20},
+	/* DEVIL   */ {100, 100, 100},  /* no decay */
+	/* ZEN     */ {100, 60, 20},
+	/* JOY     */ {100, 60, 20},
+};
+
+/* CW ring: TL(LED1)=0, TR(LED2)=1, BR(LED4)=3, BL(LED3)=2.
+ * CW_RING maps ring position (0-3) → 0-based LED index.
+ * RING_POS maps 0-based LED index → ring position. */
+static const uint8_t CW_RING[4]  = {0, 1, 3, 2};
+static const uint8_t RING_POS[4] = {0, 1, 3, 2};
+
+/* For each source LED (0-based): the 3 CW-ordered victim LED indices. */
+static const uint8_t INVADE[4][3] = {
+	/* src 0 TL/LED1 */ {1, 3, 2},
+	/* src 1 TR/LED2 */ {3, 2, 0},
+	/* src 2 BL/LED3 */ {0, 1, 3},
+	/* src 3 BR/LED4 */ {2, 0, 1},
+};
+
+typedef struct {
+	bool     active;
+	uint32_t start_ms;
+	uint8_t  src;            /* 0-based source LED (button index - 1) */
+	uint8_t  pers;
+	uint8_t  inv_rgb[3];     /* invader color snapshot at press */
+	uint8_t  vic_rgb[4][3];  /* all 4 LED colors snapshot at press */
+	bool     blackout_buzzed;
+	uint32_t p2_end;         /* t-relative: invasion end / dominance start */
+	uint32_t p3_end;         /* t-relative: dominance end / resolution start */
+	uint32_t p4_end;         /* t-relative: animation end */
+} TakeoverAnim;
+
+static TakeoverAnim tk;
+
+static bool takeover_active(void){ return tk.active; }
+
+static Personality personality_for(uint8_t r, uint8_t g, uint8_t b){
+	if((int)r > (int)g + (int)b + 30) return PERS_DEVIL;
+	if((int)g > (int)r + (int)b + 20) return PERS_JOY;
+	if((int)b > (int)r + (int)g + 20) return PERS_ZEN;
+	return PERS_CLASSIC;
+}
+
+/* Set 0-based LED to rgb at pct% brightness (0-100). */
+static void led_pct(uint8_t led_0, const uint8_t rgb[3], uint8_t pct){
+	uint8_t c[3] = {
+		(uint8_t)((uint16_t)rgb[0] * pct / 100),
+		(uint8_t)((uint16_t)rgb[1] * pct / 100),
+		(uint8_t)((uint16_t)rgb[2] * pct / 100)
+	};
+	led_set_color(led_0 + 1, c);
+}
+
+static const uint8_t OFF3[3] = {0, 0, 0};
+
+/* ── Phase 1: IGNITION ─────────────────────────────────────────────────── */
+
+static void ignition_render(uint32_t t){
+	/* Non-source LEDs hold resting colors throughout ignition. */
+	for(int i = 0; i < 4; i++){
+		if(i != tk.src) led_set_color(i + 1, (uint8_t *)tk.vic_rgb[i]);
+	}
+	if(t < 80){
+		/* F1: source on — initial pop */
+		led_pct(tk.src, tk.inv_rgb, 100);
+	} else if(t < 140){
+		/* F2: source off — the "silence before the drum hit" */
+		led_set_color(tk.src + 1, (uint8_t *)OFF3);
+	} else {
+		/* F3: source on — re-strikes harder */
+		led_pct(tk.src, tk.inv_rgb, 100);
+	}
+}
+
+/* ── Phase 2: INVASION ─────────────────────────────────────────────────── */
+
+static uint8_t get_subframe(uint32_t t_vic, uint8_t pers){
+	const uint16_t *sf = SF_CUM[pers];
+	for(int i = 0; i < 7; i++){
+		if(t_vic < sf[i]) return (uint8_t)i;
+	}
+	return 6;
+}
+
+static void render_victim_sf(uint8_t vic_0, uint8_t sf, uint8_t pers){
+	if(sf % 2 == 0){
+		/* Even sub-frame (0,2,4,6): invader@100% */
+		led_pct(vic_0, tk.inv_rgb, 100);
+	} else {
+		/* Odd sub-frame (1,3,5): victim at decaying brightness */
+		led_pct(vic_0, tk.vic_rgb[vic_0], VIC_PCT[pers][sf / 2]);
+	}
+}
+
+static void invasion_render(uint32_t t){
+	uint16_t vic_dur = PP[tk.pers].vic_dur_ms;
+	uint8_t  vi      = (uint8_t)(t / vic_dur);
+	if(vi > 2) vi = 2;
+	uint32_t t_vic   = t - (uint32_t)vi * vic_dur;
+
+	/* Source LED: always invader@100% (the conqueror never wavers) */
+	led_pct(tk.src, tk.inv_rgb, 100);
+
+	/* Already-conquered victims: hold invader color */
+	for(int v = 0; v < vi; v++){
+		led_pct(INVADE[tk.src][v], tk.inv_rgb, 100);
+	}
+
+	/* Current victim: sub-frame battle */
+	uint8_t sf = get_subframe(t_vic, tk.pers);
+	render_victim_sf(INVADE[tk.src][vi], sf, tk.pers);
+
+	/* Not-yet-invaded victims: still at resting color */
+	for(int v = vi + 1; v < 3; v++){
+		uint8_t l = INVADE[tk.src][v];
+		led_set_color(l + 1, (uint8_t *)tk.vic_rgb[l]);
+	}
+}
+
+/* ── Phase 3: DOMINANCE ─────────────────────────────────────────────────── */
+
+static void dominance_render(uint32_t t){
+	uint8_t frame    = (uint8_t)(t / 100);           /* 0..7 for 2 full rotations */
+	uint8_t rp_src   = RING_POS[tk.src];
+	uint8_t comet_rp;
+	if(PP[tk.pers].ccw){
+		comet_rp = (uint8_t)((rp_src + 8 - frame) % 4);  /* CCW: Devil */
+	} else {
+		comet_rp = (uint8_t)((rp_src + frame) % 4);       /* CW */
+	}
+	uint8_t comet = CW_RING[comet_rp];
+	uint8_t dim   = PP[tk.pers].dim_pct;
+
+	for(int i = 0; i < 4; i++){
+		if(i == comet){
+			led_pct(i, tk.inv_rgb, 100);
+		} else if(dim == 0){
+			/* Joy overshoot: others go dark between steps */
+			led_set_color(i + 1, (uint8_t *)OFF3);
+		} else {
+			led_pct(i, tk.inv_rgb, dim);
+		}
+	}
+}
+
+/* ── Phase 4: RESOLUTION ─────────────────────────────────────────────────── */
+
+static void resolution_render(uint32_t t){
+	if(t < 100){
+		/* F1: crescendo — all at invader@100% */
+		for(int i = 0; i < 4; i++) led_pct(i, tk.inv_rgb, 100);
+		if(PP[tk.pers].white_flick && t >= 40 && t < 70){
+			/* Devil: white flash mid-hold */
+			uint8_t white[3] = {200, 200, 200};
+			for(int i = 0; i < 4; i++) led_set_color(i + 1, (uint8_t *)white);
+		}
+		if(PP[tk.pers].double_pulse && t >= 40 && t < 65){
+			/* Joy: quick half-brightness dip for double-pulse feel */
+			for(int i = 0; i < 4; i++) led_pct(i, tk.inv_rgb, 50);
+		}
+	} else if(t < 200){
+		/* F2: blackout — the hush; buzzer thud fires here */
+		for(int i = 0; i < 4; i++) led_set_color(i + 1, (uint8_t *)OFF3);
+	} else {
+		/* F3: resting colors snap back */
+		for(int i = 0; i < 4; i++) led_set_color(i + 1, led_resting[i]);
+	}
+}
+
+/* ── Public API ──────────────────────────────────────────────────────────── */
+
+/* Call from keys.c before send_keys() with 0-based button index (key - 1). */
+void takeover_start(uint8_t src_0){
+	extern bool button_flash_enabled;
+	if(!button_flash_enabled) return;
+
+	buzzer_cancel();
+
+	tk.active         = true;
+	tk.start_ms       = millis;
+	tk.src            = src_0 & 3;
+	tk.blackout_buzzed = false;
+
+	/* Snapshot resting colors at press time */
+	for(int i = 0; i < 4; i++){
+		tk.vic_rgb[i][0] = ledvalues[i * 3];
+		tk.vic_rgb[i][1] = ledvalues[i * 3 + 1];
+		tk.vic_rgb[i][2] = ledvalues[i * 3 + 2];
+	}
+	tk.inv_rgb[0] = tk.vic_rgb[src_0][0];
+	tk.inv_rgb[1] = tk.vic_rgb[src_0][1];
+	tk.inv_rgb[2] = tk.vic_rgb[src_0][2];
+
+	tk.pers = (uint8_t)personality_for(tk.inv_rgb[0], tk.inv_rgb[1], tk.inv_rgb[2]);
+
+	uint32_t vd  = PP[tk.pers].vic_dur_ms;
+	tk.p2_end    = 300 + 3 * vd;
+	tk.p3_end    = tk.p2_end + 800;
+	tk.p4_end    = tk.p3_end + 350;
+
+	/* Immediate ignition flash so press feels instant before key sends */
+	led_pct(src_0, tk.inv_rgb, 100);
+
+	buzzer_play(PP[tk.pers].click_hz, PP[tk.pers].click_ms);
+}
+
+/* Call once per main-loop tick from update_effects().
+ * Returns true while animation is running (caller should skip other effects). */
+bool takeover_tick(void){
+	_buzzer_tick();
+	if(!tk.active) return false;
+
+	uint32_t t = millis - tk.start_ms;
+
+	/* Fire blackout thud at the F1→F2 boundary inside resolution */
+	if(!tk.blackout_buzzed && t >= (tk.p3_end + 100)){
+		buzzer_play(PP[tk.pers].thud_hz, PP[tk.pers].thud_ms);
+		tk.blackout_buzzed = true;
+	}
+
+	if(t >= tk.p4_end){
+		/* Restore all LEDs to their resting colors */
+		for(int i = 0; i < 4; i++) led_set_color(i + 1, led_resting[i]);
+		tk.active = false;
+		return false;
+	} else if(t >= tk.p3_end){
+		resolution_render(t - tk.p3_end);
+	} else if(t >= tk.p2_end){
+		dominance_render(t - tk.p2_end);
+	} else if(t >= 300){
+		invasion_render(t - 300);
+	} else {
+		ignition_render(t);
+	}
+	return true;
 }

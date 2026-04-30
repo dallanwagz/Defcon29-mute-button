@@ -25,7 +25,7 @@ All messages: `[0x01] [CMD_BYTE] [0 or more argument bytes]`
 | `01 58` | none | LED 4 → off |
 | `01 4B n m k` | 3 | Set button `n` keymap: modifier `m`, keycode `k` |
 | `01 51 n` | 1 | Query button `n` keymap |
-| `01 4C n r g b` | 4 | Set LED `n` color to (r,g,b) — RAM only |
+| `01 4C n r g b` | 4 | Set LED `n` resting color to (r,g,b) — RAM only, survives takeover animation |
 | `01 46 v` | 1 | Button flash: `v=1` enable, `v=0` disable |
 | `01 45 n` | 1 | Set effect mode: 0=off 1=rainbow-chase 2=breathe |
 

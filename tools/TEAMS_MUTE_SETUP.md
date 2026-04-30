@@ -1,183 +1,133 @@
 # Teams Mute Indicator — Setup Guide
 
-End-to-end setup for the DC29 badge as a Microsoft Teams mute-state indicator.
-The badge button toggles Teams mute via a normal `[ctrl][shift]m` macro (set
-through the serial console), and the badge's LED 4 reflects the **actual**
-Teams mute state — green when the mic is open, red when muted, off when not
-in a meeting. State is reported back from Teams over its Local API, so the
-LED stays correct regardless of how you toggled (badge button, Teams UI,
-keyboard shortcut, push-to-talk, etc.).
+End-to-end setup for the DC29 badge as a Microsoft Teams mute-state indicator using the `dc29-badge` Python package.
 
-## What's in the build
+Button 4 toggles Teams mute and shows the **actual** Teams mute state — green when the mic is open, red when muted, off when not in a meeting. State is read from the Teams Local API, so the LED stays correct regardless of how you toggled (badge button, Teams UI, keyboard shortcut, push-to-talk, etc.).
 
-The firmware running on the badge (already flashed) listens on USB CDC for a
-two-byte status command:
+## Prerequisites
 
-| Bytes        | Effect                          |
-|--------------|---------------------------------|
-| `0x01` `'M'` | LED 4 → red (muted)             |
-| `0x01` `'U'` | LED 4 → green (unmuted)         |
-| `0x01` `'X'` | LED 4 → off (cleared / no mtg)  |
+### 1. Install the dc29-badge package
 
-`0x01` is reserved as the escape prefix; it's never produced by macro entry
-or menu navigation, so this side-channel is safe to run while you're also
-using the macro editor interactively.
-
-LEDs 1–3 are unaffected by the indicator and continue to work normally
-(including the press-flash that briefly turns them white when their button
-fires a macro).
-
-## Prerequisites (do these on the Mac)
-
-### 1. Enable Teams Local API
-
-Open Teams desktop client → **Settings** → **Privacy** → **Manage API**.
-Toggle on **"Enable third-party API"** (the label has changed across Teams
-versions — also seen as "Third-party app permission" or "Allow API"). Save
-and restart Teams if prompted.
-
-If you don't see that setting:
-- Confirm Teams version 1.6.x or newer (Help → About).
-- Some corporate tenants block the local API via admin policy. Check with
-  your IT admin if the toggle is missing or greyed out.
-
-### 2. Install Python dependencies
+From the repo root:
 
 ```bash
-python3 -m pip install websockets pyserial
+pip install -e ".[hotkey]"
 ```
 
-(Python 3.10+ recommended. macOS ships with `python3` preinstalled.)
+### 2. Enable Teams Local API
 
-### 3. Find the badge's serial port
+Open Teams desktop → **Settings** → **Privacy** → **Third-party app API** (also seen as "Manage API" or "Allow API" depending on Teams version).
 
-Plug the badge in and run:
+Toggle **Enable third-party API** on. Restart Teams if prompted.
+
+If the toggle is missing or greyed out, your IT admin may have disabled the Local API via tenant policy.
+
+### 3. Kill Elgato Stream Deck (if installed)
+
+Stream Deck connects to the same Teams API port (`localhost:8124`). Only one client is allowed at a time — Stream Deck will block dc29.
 
 ```bash
-ls /dev/tty.usbmodem*
+killall "Stream Deck"
 ```
 
-The badge appears as something like `/dev/tty.usbmodem14201`. The exact
-suffix changes between USB ports / reboots — re-check after replug.
+You'll need to do this each time before running dc29 flow, unless you disable Stream Deck's Teams integration in its settings.
 
-### 4. Clone or pull this repo on the Mac
+### 4. Clear any stale token and Teams API device entry
+
+If you've connected before and need to re-pair:
 
 ```bash
-git clone https://github.com/dallanwagz/Defcon29-mute-button.git
-cd Defcon29-mute-button
-git checkout playground
+rm ~/.dc29_teams_token
 ```
 
-(Or `git pull` if already cloned.)
+Then in Teams → Settings → Privacy → Third-party app API, if **DC29: MuteIndicator** appears in the Allowed or Blocked list, remove it entirely. (Block it first if needed — Teams requires blocking before removing.)
+
+---
 
 ## First run (pairing)
 
+**Pairing only works during an active Teams meeting.** The `canPair` permission is `false` when not in a call, so Teams won't show the authorization dialog outside of a meeting.
+
+1. Join a Teams meeting (or start a test call via Calendar → Meet now)
+2. Run:
+   ```bash
+   dc29 flow -v
+   ```
+3. Watch for a **"New connection request"** popup in Teams: `DC29: MuteIndicator — Allow / Block`
+4. Click **Allow**
+5. The token is saved to `~/.dc29_teams_token` — subsequent runs connect automatically without needing to be in a meeting
+
+---
+
+## Normal use
+
 ```bash
-python3 tools/teams_mute_indicator.py --port /dev/tty.usbmodem14201
+dc29 flow -v
 ```
 
-On first connection, **Teams shows a dialog** asking whether to allow
-`DC29 / DefconBadgeMacropad / MuteIndicator` to connect. Click **Allow**.
-Teams sends a token back, which the script saves to
-`~/.dc29_teams_token` for subsequent runs. After that, no dialog —
-the script just connects.
+Or with the full TUI:
 
-If the script logs `Disconnected: ConnectionRefusedError`, the API is not
-enabled in Teams (see Prerequisites step 1) or Teams isn't running.
+```bash
+dc29 start
+```
+
+`dc29 flow` runs all bridges concurrently: Teams mute indicator, Slack huddle detection, Outlook email shortcuts, and 15 app-specific shortcut pages. The badge LEDs reflect the active context at all times.
+
+---
 
 ## Test plan
 
-With the script running and the badge plugged in, work through these
-scenarios. Each transition should reflect on LED 4 within ~1 second.
+With `dc29 flow -v` running and the badge plugged in:
 
-| Step | Action                                                  | Expected LED 4   |
-|------|---------------------------------------------------------|------------------|
-| 1    | Outside any meeting                                     | Off (CLEAR)      |
-| 2    | Join a Teams meeting muted                              | Red              |
-| 3    | Unmute via Teams UI (click mic icon)                    | Green            |
-| 4    | Mute via `Cmd+Shift+M` (Teams' Mac shortcut)            | Red              |
-| 5    | Set badge key 4 macro to `[ctrl][shift]m` then press it | Toggles, LED follows actual Teams state |
-| 6    | Leave the meeting                                       | Off (CLEAR)      |
-| 7    | Unplug + replug badge while script runs                 | Brief error log, then recovers |
+| Step | Action | Expected LED 4 |
+|------|--------|----------------|
+| 1 | Outside any meeting | Off |
+| 2 | Join a Teams meeting muted | Red |
+| 3 | Unmute via Teams UI | Green |
+| 4 | Mute via Cmd+Shift+M (Teams Mac shortcut) | Red |
+| 5 | Press badge Button 4 | Toggles; LED follows actual Teams state |
+| 6 | Leave the meeting | Off |
 
-Step 5 is the key correctness test: the LED is driven by the script reading
-state *from Teams*, not by tracking button presses. So even if the badge
-button gets out of sync (push-to-talk, focus loss, click-to-unmute in the
-Teams UI, network glitch), the LED still tells you the real state.
+Button 4 sends `toggle-mute` directly to the Teams WebSocket — no HID keymap needed. If badge buttons previously had EEPROM keymaps set, run `dc29 clear-keys` to avoid double-injection.
 
-> **Note on the Mac shortcut**: Teams uses `Cmd+Shift+M` on macOS. If you
-> set the badge to send `[ctrl][shift]m`, that fires Ctrl+Shift+M which
-> is the **Windows** Teams shortcut and won't toggle Teams mute on Mac.
-> For a Mac-side macro, use `[gui][shift]m` (Cmd+Shift+M).
-
-## Autostart (optional)
-
-To run the script at login on macOS, the simplest path is `launchd`:
-
-1. Save this as `~/Library/LaunchAgents/com.local.dc29-teams-mute.plist`
-   (replace `/dev/tty.usbmodemXXXXX` with your badge's port and the script
-   path with your actual repo location):
-
-   ```xml
-   <?xml version="1.0" encoding="UTF-8"?>
-   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-   <plist version="1.0">
-   <dict>
-       <key>Label</key>
-       <string>com.local.dc29-teams-mute</string>
-       <key>ProgramArguments</key>
-       <array>
-           <string>/usr/bin/python3</string>
-           <string>/Users/YOU/Defcon29-mute-button/tools/teams_mute_indicator.py</string>
-           <string>--port</string>
-           <string>/dev/tty.usbmodemXXXXX</string>
-       </array>
-       <key>RunAtLoad</key>
-       <true/>
-       <key>KeepAlive</key>
-       <true/>
-       <key>StandardOutPath</key>
-       <string>/tmp/dc29-teams-mute.log</string>
-       <key>StandardErrorPath</key>
-       <string>/tmp/dc29-teams-mute.err</string>
-   </dict>
-   </plist>
-   ```
-
-2. Load it:
-
-   ```bash
-   launchctl load ~/Library/LaunchAgents/com.local.dc29-teams-mute.plist
-   ```
-
-The `KeepAlive` directive will respawn the script if it crashes. Logs go
-to `/tmp/dc29-teams-mute.log` and `/tmp/dc29-teams-mute.err`.
-
-The major fragility here is the COM port path — if you replug into a
-different USB port, the device path may change and the launchd job will
-fail until you update the plist. A more robust approach is to look up the
-port by USB VID/PID inside the Python script, but that's not implemented
-yet.
+---
 
 ## Troubleshooting
 
-**Script says `Connection refused`**: Teams API isn't enabled, or Teams
-isn't running. Check Teams Settings → Privacy → Manage API.
+**`timed out during opening handshake`**
+Teams API port is held by another process, usually Stream Deck. Run `killall "Stream Deck"` and retry.
 
-**Script connects but no Teams permission dialog appears**: an older token
-in `~/.dc29_teams_token` might already be paired but invalidated.
-`rm ~/.dc29_teams_token` and re-run to trigger pairing.
+**No pairing dialog appears**
+- Are you in an active Teams meeting? Pairing only works in-call.
+- Is DC29: MuteIndicator still in the Teams Allowed or Blocked list? Remove it entirely, delete `~/.dc29_teams_token`, and retry.
+- Is another process holding port 8124? Check with `lsof -i :8124`.
 
-**LED 4 never changes**: confirm the badge is plugged in and the script
-log shows `State -> MUTED/UNMUTED/CLEAR` lines on each Teams change.
-If the script reports state but LED doesn't update, the badge serial port
-might be open in another program (close any serial console that's holding
-the port).
+**`Connection refused`**
+Teams isn't running, or the Local API isn't enabled (Settings → Privacy → Third-party app API).
 
-**LED 4 stuck on a color when not in a meeting**: the script writes
-`CLEAR` on `isInMeeting=false`, but Teams sometimes delays this event.
-Leave the meeting cleanly (don't just close the window).
+**LED 4 correct in Teams but turns off when Outlook is open**
+This was a bug (fixed): Teams reconnect cycles were clearing LEDs owned by other bridges. Update to the latest code.
 
-**Permission dialog never appears in Teams**: some Teams builds require
-restarting the desktop client after enabling the API. Quit Teams fully
-(Cmd+Q) and reopen.
+**Button 4 fires Teams mute AND something else**
+EEPROM has a keymap stored for button 4. Run `dc29 clear-keys` to zero all keymaps. Use `dc29 diagnose` to confirm they're cleared.
+
+**Pairing dialog appeared but dc29 didn't save the token**
+The probe script (`python3 /tmp/teams_probe3.py`) captures the token manually. Save it:
+```bash
+echo -n "<token-from-probe>" > ~/.dc29_teams_token && chmod 600 ~/.dc29_teams_token
+```
+
+---
+
+## Autostart
+
+```bash
+dc29 autostart install
+```
+
+Installs a launchd agent that starts `dc29 flow` at login. The agent uses the badge's USB serial port (auto-detected by VID/PID). Check status with:
+
+```bash
+dc29 autostart status
+dc29 autostart logs
+```

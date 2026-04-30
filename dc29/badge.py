@@ -411,7 +411,8 @@ class BadgeAPI:
                     if data:
                         self._parse_rx(data[0])
                 except (SerialException, OSError) as exc:
-                    log.warning("Badge reader error (%s): reconnecting in 1s.", exc)
+                    if not self._stop_event.is_set():
+                        log.warning("Badge reader error (%s): reconnecting in 1s.", exc)
                     disconnected = True
                     break
                 except Exception:
