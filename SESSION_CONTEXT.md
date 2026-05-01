@@ -165,3 +165,114 @@ Enforces the positional semantics checklist and drift-prevention rules so every 
 - **Satisfying physics** — the ripple animation exists because pressing a physical button and getting visual feedback is intrinsically satisfying to humans. This is not decorative.
 - **Open loop** — the TUI is always there. You don't go looking for it. It tells you what the badge is doing without asking.
 - **Firmware-first** — animation, debounce, HID all happen in the MCU. Python handles semantics and APIs. Nothing slow in the hot path.
+
+---
+
+## Bugs fixed (session 2 — 2026-04-30)
+
+### 1. Teams WebSocket timing out during opening handshake
+
+**Symptom:** `dc29 flow -v` showed `timed out during opening handshake` exactly at 10s.
+
+**Root cause:** All 15+ `FocusBridge` instances called `subprocess.run(["osascript", ...])` synchronously at startup, blocking the asyncio event loop for several seconds — right during the Teams WebSocket handshake.
+
+**Fix 1:** Changed `_check_focus()` call in `FocusBridge.run()` to use `run_in_executor` so it runs in a thread pool without blocking the loop.
+
+**Fix 2:** Added a module-level TTL cache in `dc29/bridges/focus.py` (`_get_active_app()`) with a `threading.Lock`. 15+ concurrent thread-pool calls all submitted `osascript` simultaneously to macOS System Events → all timed out at 1.5s. The cache serializes them: one real call per 350ms window, all others return immediately from cache.
+
+**Fix 3:** Added `open_timeout=30` to `websockets.connect()` in `teams.py`.
+
+---
+
+### 2. Teams pairing — no authorization dialog appeared
+
+**Symptom:** Bridge connected, `canPair: false`, no dialog in Teams.
+
+**Root causes:**
+- `canPair` is only `true` during an active Teams meeting. Connecting outside a call returns all-false permissions.
+- The bridge must send `{"action": "pair"}` explicitly after connecting without a token — just connecting is not enough.
+- If the device appears in Teams → Settings → Privacy → Third-party app API (Allowed OR Blocked list), Teams silently suppresses the dialog. Must remove it entirely.
+- Elgato Stream Deck holds port 8124 exclusively — only one client at a time. Must `killall "Stream Deck"` before dc29.
+
+**Working pairing procedure:**
+1. `killall "Stream Deck"`
+2. `rm ~/.dc29_teams_token`
+3. Teams → Settings → Privacy → Third-party app API: block DC29, then remove it entirely
+4. Join a Teams meeting
+5. `dc29 flow -v` → accept the "New connection request" dialog in Teams
+6. Token saved to `~/.dc29_teams_token` — subsequent runs connect automatically
+
+---
+
+### 3. Teams bridge clobbering Outlook/Slack LEDs every 5 seconds
+
+**Symptom:** Outlook page loaded correctly; as soon as the first `Teams WebSocket disconnected: [Errno 61]` warning appeared (~5s after launch), LED 4 turned off.
+
+**Root cause:** `TeamsBridge._set_meeting_state(NOT_IN_MEETING)` was called unconditionally after every failed reconnect, which called `_clear_page_leds()` and `badge.set_mute_state(NOT_IN_MEETING)` (sends `0x01 X` → firmware turns LED 4 off). Teams not being open is a normal condition; wiping other bridges' LEDs was wrong.
+
+**Fix:** Two guards added in `teams.py`:
+- `if was_in_meeting:` before `_clear_page_leds()` and `set_current_page(None)`
+- `if was_in_meeting or now_in_meeting:` before `badge.set_mute_state()`
+
+Only touch LEDs when actually transitioning into or out of a meeting.
+
+---
+
+### 4. Outlook bridge LED and delete UX
+
+**Changes:**
+- Delete (B1) LED changed from warm red `(220, 35, 0)` → pure red `(220, 0, 0)`.
+- After delete keypress, plays an ascending two-tone Tink jingle via `afplay` (macOS only): rate 0.85 then rate 1.4, 70ms apart. Runs as a background asyncio task so it doesn't block the button handler.
+- Implementation in `dc29/bridges/outlook.py`: `_play_delete_sound()` async method + `asyncio.create_task()` in `handle_button`.
+
+---
+
+## Current working state (as of 2026-05-01)
+
+### What works end-to-end
+
+```bash
+dc29 start        # TUI + all bridges: Teams, Slack, Outlook, 15 app pages
+dc29 flow -v      # Headless, all bridges, verbose logs
+dc29 diagnose     # Show EEPROM keymaps + active app
+dc29 clear-keys   # Zero EEPROM macros (run once to eliminate double-injection)
+```
+
+- Teams mute indicator: LED 4 red/green/off tracks live meeting state
+- Focus bridges: Outlook, Slack, VS Code, Cursor, Figma, Notion, Jira, GitHub, Chrome, + 6 more
+- Outlook delete: pure red + ascending Tink jingle feedback
+- Button press animation: firmware takeover ripple (additive color blend, ~200ms)
+- TUI: live companion showing active page name, button colors, action labels
+
+### Known limitations / not yet tested
+
+- `dc29 autostart install` runs `dc29 teams` only (headless Teams bridge). Does **not** run Slack/Outlook/generic pages and does **not** include the TUI. The TUI requires a terminal.
+  - **Recommended:** Add `dc29 start` to login items manually (System Settings → General → Login Items) pointing at a shell script that opens a new iTerm2 tab.
+  - Or edit the generated launchd plist at `~/Library/LaunchAgents/com.dc29badge.teams.plist` to change `teams` → `flow`.
+- Slack huddle mute detection not yet validated end-to-end.
+- Windows platform untested with the new bridge stack.
+
+### Install from scratch (new machine)
+
+```bash
+git clone https://github.com/dallanwagz/Defcon29-mute-button.git
+cd Defcon29-mute-button
+pip install -e ".[tui,hotkey]"
+
+# First time: clear any firmware EEPROM macros
+dc29 clear-keys
+
+# Run everything
+dc29 start
+
+# First Teams pairing (must be IN a meeting):
+#   - killall "Stream Deck"
+#   - rm ~/.dc29_teams_token
+#   - Remove DC29 from Teams → Settings → Privacy → Third-party app API
+#   - Join a meeting, run dc29 flow -v, click Allow in Teams
+```
+
+### macOS permissions required
+
+- **Accessibility** (System Settings → Privacy & Security → Accessibility → enable your terminal app) — required for pynput shortcut injection and focus detection
+- Teams Local API must be enabled: Teams → Settings → Privacy → Third-party app API → Enable third-party API
