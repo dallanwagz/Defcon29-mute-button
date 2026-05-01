@@ -85,7 +85,8 @@ Against: `compukidmike/Defcon29:main`
 
 ## Local Mac Repo State (for reference)
 
-The Mac has the full working tree at `/Users/dallan/repo/Defcon29` tracking
-`compukidmike/Defcon29` (upstream) as `origin`. All bug fixes (5 confirmed bugs
-+ Issue #5) are uncommitted on `main`. The `fix/issue-5-modifier-keys` branch
-is pushed to `dallanwagz/Defcon29-mute-button` with only the Issue #5 fix.
+The Mac working tree tracks `compukidmike/Defcon29` (upstream) as `origin`,
+and the user's fork `dallanwagz/Defcon29-mute-button` as `myfork`.  The
+`fix/issue-5-modifier-keys` branch was pushed to `myfork` with the Issue #5
+fix only; subsequent feature work landed on `playground` and was merged to
+`main`.

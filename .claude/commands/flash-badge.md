@@ -28,7 +28,7 @@ Use this to tailor the user-facing instructions in step 2.
 
 ```bash
 export PATH="$HOME/opt/arm-gnu-toolchain/Payload/bin:$PATH"
-cd /Users/dallan/repo/Defcon29/Firmware/Source/DC29
+cd "$(git rev-parse --show-toplevel)/Firmware/Source/DC29"
 make           # or: make clean && make for --rebuild
 ```
 
@@ -49,7 +49,7 @@ Then start the polling script (foreground, with a 90-second timeout).
 ## Step 3: Poll for the bootloader drive and copy the .uf2
 
 ```bash
-cd /Users/dallan/repo/Defcon29
+cd "$(git rev-parse --show-toplevel)"
 UF2=Firmware/Source/DC29/build/DC29.uf2
 start=$(date +%s); volume=""
 while :; do
