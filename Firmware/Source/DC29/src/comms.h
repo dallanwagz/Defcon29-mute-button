@@ -39,27 +39,18 @@ void configure_usart_top_usb(void);
 void disable_usart_top(void);
 void configure_usart_callbacks(void);
 
-void check_comms(void);
-void send_hello(uint8_t port);
-void send_challenge_status(uint8_t port);
-void usart_rx_handler(uint8_t port, uint8_t data);
-void get_badge_count(void);
-void send_simon_game_packet(uint16_t badge, uint8_t button);
-void send_simon_button_packet(uint16_t badge, uint8_t button);
-void send_simon_game_over(uint16_t score);
 void send_heartbeats(void);
-void disable_usarts(void);
 
-volatile uint32_t uart_event;
+extern volatile uint32_t uart_event;
 
 
 //! [module_inst]
-struct usart_module usart_top_instance;
-struct usart_module usart_right_instance;
-struct usart_module usart_bottom_instance;
-struct usart_module usart_left_instance;
-struct usart_module usart_usba_instance;
-struct usart_module usart_usbc_instance;
+extern struct usart_module usart_top_instance;
+extern struct usart_module usart_right_instance;
+extern struct usart_module usart_bottom_instance;
+extern struct usart_module usart_left_instance;
+extern struct usart_module usart_usba_instance;
+extern struct usart_module usart_usbc_instance;
 //! [module_inst]
 
 //! [rx_buffer_var]

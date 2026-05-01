@@ -47,7 +47,6 @@
 #include <rww_eeprom.h>
 #include "keys.h"
 #include "serialconsole.h"
-#include "games.h"
 
 
 
@@ -63,8 +62,6 @@ enum status_code eepromstatus;
 /**
  * Variables
  */
-
-bool mute_on = false;
 
 uint32_t serialnum[4];
 
@@ -102,7 +99,17 @@ volatile bool button2 = false;
 volatile bool button3 = false;
 volatile bool button4 = false;
 
-#define DEBOUNCE_TIME 200
+#define DEBOUNCE_TIME          200
+#define CHORD_SHORT_MS         300   /* min hold (ms) to register a short chord */
+#define CHORD_LONG_MS         2000   /* hold (ms) to fire a long chord */
+#define EFFECT_CHASE_STEP_MS    150   /* ms per step for rainbow-chase mode */
+#define EFFECT_BREATHE_STEP_MS    8   /* ms per step for breathe mode */
+#define EFFECT_WIPE_STEP_MS     200   /* ms per step for color-wipe mode */
+#define EFFECT_TWINKLE_STEP_MS   60   /* ms per step for twinkle mode */
+#define EFFECT_GRADIENT_STEP_MS  40   /* ms per step for gradient mode */
+#define EFFECT_THEATER_STEP_MS  120   /* ms per step for theater-chase mode */
+#define EFFECT_CYLON_STEP_MS     90   /* ms per step for cylon sweep */
+#define EFFECT_PARTICLES_STEP_MS 16   /* ~60 fps physics tick */
 volatile uint32_t lastButton1Press = 0;
 volatile uint32_t lastButton2Press = 0;
 volatile uint32_t lastButton3Press = 0;
@@ -114,20 +121,83 @@ uint8_t keymapstarts[6];
 
 uint8_t fwversion[1];
 
-serial serialnumlist;
-
-//Challenge challengedata;
-ChallengeStruct challengedata;
-
-//Game gamedata;
-GameStruct gamedata;
-
-GameModes gamemode;
-
 extern struct tcc_module tcc2_instance;
 
-volatile bool games_buzzer_off = true;
+bool button_flash_enabled = true;
+
+/* Capacitive touch slider enable.  When false, the slider is still scanned
+ * (cheap, debounce keeps the position cache consistent) but the
+ * volume-up / volume-down HID injections are suppressed.  Set via
+ * 0x01 'S' 0/1 from the host.  RAM-only, default on. */
+bool slider_enabled = true;
+
+/* Interactive splash on button press.  When true (default), pressing a
+ * button while an effect mode is running fires the ~300 ms firmware splash
+ * animation — captures the LED's current displayed color, sprays it
+ * outward, settles back to the underlying scene.  Works on battery without
+ * USB.  Set via 0x01 'I' 0/1 from the host.  RAM-only, default on. */
+bool splash_on_press_enabled = true;
+uint8_t effect_mode = 0;
+typedef enum { CHORD_IDLE, CHORD_PENDING, CHORD_LONG_FIRED } ChordState;
+static ChordState chord_state = CHORD_IDLE;
+static uint32_t   chord_start = 0;
+static uint8_t    effect_step = 0;
+static uint8_t    effect_hue  = 0;
+static uint32_t   effect_timer = 0;
 volatile uint32_t last_usb_comms = 0;
+
+/* ─── Particles physics state (effect mode 8) ────────────────────────────
+ *
+ * The badge has a 2x2 LED matrix:
+ *
+ *     LED1  ─  LED2     (top row)
+ *      │         │
+ *     LED3  ─  LED4     (bottom row)
+ *
+ * Two virtual particles drift through a 2D box and bounce off the four
+ * walls.  Each LED corresponds to a corner of the box; its brightness is
+ * the sum of contributions from each particle, falloff with distance.
+ * Hue bumps on every wall hit (X and Y bumps use different deltas so the
+ * pattern doesn't lock into a periodic loop).
+ *
+ * Position is plain int16 in [0, 255] each axis — no fixed-point math
+ * needed because the grid is so small.  Velocity is per-tick @ 60 fps.
+ * ────────────────────────────────────────────────────────────────────── */
+
+#define PARTICLE_RANGE   255
+#define PARTICLE_COUNT   2
+#define PARTICLE_FALLOFF 200   /* manhattan-distance cutoff for LED contribution */
+
+typedef struct {
+	int16_t x, y;      /* in [0, PARTICLE_RANGE] */
+	int16_t vx, vy;    /* per-tick velocity */
+	uint8_t hue;
+	uint8_t bright;
+} Particle;
+
+/* LED → corner mapping (matches hardware layout). */
+static const uint8_t led_corner_x[4] = {0, PARTICLE_RANGE, 0, PARTICLE_RANGE};  /* L1=TL, L2=TR, L3=BL, L4=BR */
+static const uint8_t led_corner_y[4] = {0, 0, PARTICLE_RANGE, PARTICLE_RANGE};
+
+static Particle particles[PARTICLE_COUNT];
+static bool particles_initialized = false;
+
+static void particles_init(void){
+	/* Two seeds with different speeds so they desynchronize quickly. */
+	particles[0].x = 60;  particles[0].y = 80;
+	particles[0].vx = 3;  particles[0].vy = 2;
+	particles[0].hue = 32;  particles[0].bright = 220;
+
+	particles[1].x = 200; particles[1].y = 180;
+	particles[1].vx = -2; particles[1].vy = 4;
+	particles[1].hue = 180; particles[1].bright = 220;
+
+	particles_initialized = true;
+}
+
+/* Forward declarations for static functions defined later in this file */
+static void update_effects(void);
+static void hsv_to_rgb(uint8_t h, uint8_t v, uint8_t *r, uint8_t *g, uint8_t *b);
 
 /* Macros */
 
@@ -403,118 +473,108 @@ int main(void)
 	delay_cycles_ms(delaytime);
 	led_off(LED4B);
 	
-	if(!port_pin_get_input_level(BUTTON1)){
-		gamemode = SIMON_SOLO;
-		led_set_color(1,LED_COLOR_OFF);
-		led_set_color(2,LED_COLOR_OFF);
-		led_set_color(3,LED_COLOR_OFF);
-		led_set_color(4,LED_COLOR_OFF);
-		while(port_pin_get_input_level(BUTTON1) == false);
-		button1 = false;
-	}
-
 	uart_event = millis;
 	
-	led_set_color(1,led1color);
-	led_set_color(2,led2color);
-	led_set_color(3,led3color);
-	led_set_color(4,led4color);
+	led_set_resting_color(1,led1color);
+	led_set_resting_color(2,led2color);
+	led_set_resting_color(3,led3color);
+	led_set_resting_color(4,led4color);
 
-	
+
 	while(1){
-		//Check Buttons
-		if(gamemode == IDLE){ //Game modes check the buttons themselves
-			if(USBPower && ((millis - last_usb_comms) < 100)){ //Only send keys when connected to a computer
-				if(button1){
-					button1 = false;
-					//if(main_b_kbd_enable) send_keys(1);
-					send_keys(1);
-				}
-				if(button2){
-					button2 = false;
-					//if(main_b_kbd_enable) send_keys(2);
-					send_keys(2);
-				}
-				if(button3){
-					button3 = false;
-					//if(main_b_kbd_enable) send_keys(3);
-					send_keys(3);
-				}
-				if(button4){
-					button4 = false;
-					//if(main_b_kbd_enable) send_keys(4);
-					if(mute_on){
-						led_set_color(4, LED_COLOR_RED);
-					}
-					else {
-						led_set_color(4, LED_COLOR_BLUE);
-					}
-					mute_on = !mute_on;
-					send_keys(4);
-				}
-			
-				//Check Touch Sensors
-				touch_sensors_measure();
-				if (p_selfcap_measure_data->measurement_done_touch == 1u) {
+		/* --- 4-button chord detection (works standalone, no USB required) ---
+		   Short chord (all 4 held CHORD_SHORT_MS..CHORD_LONG_MS, released):
+		     cycles effect mode, sends 0x01 V n and 0x01 C 1.
+		   Long chord (all 4 held >= CHORD_LONG_MS):
+		     fires immediately, resets to mode 0, sends 0x01 V 0 and 0x01 C 2.
+		   While any chord is pending, individual button flags are cleared so no
+		   HID keystrokes fire. */
+		bool all4 = !port_pin_get_input_level(BUTTON1) &&
+		            !port_pin_get_input_level(BUTTON2) &&
+		            !port_pin_get_input_level(BUTTON3) &&
+		            !port_pin_get_input_level(BUTTON4);
 
-					p_selfcap_measure_data->measurement_done_touch = 0u;
-					slider_state = GET_SELFCAP_SENSOR_STATE(0);
-					if(slider_state)
-					{
-						slider_position = GET_SELFCAP_ROTOR_SLIDER_POSITION(0);
-						if(slider_position > last_slider_position + 10){
-							last_slider_position = slider_position;
-							send_keys(6);//sliding down
-						}
-						if(slider_position < last_slider_position - 10){
-							last_slider_position = slider_position;
-							send_keys(5);//sliding up
-						}
+		if(all4){
+			button1 = button2 = button3 = button4 = false;
+			if(chord_state == CHORD_IDLE){
+				chord_state = CHORD_PENDING;
+				chord_start = millis;
+			} else if(chord_state == CHORD_PENDING){
+				if((millis - chord_start) >= CHORD_LONG_MS){
+					chord_state = CHORD_LONG_FIRED;
+					set_effect_mode(0);
+					if(main_b_cdc_enable){
+						uint8_t evt[3] = {0x01, 'C', 2};
+						udi_cdc_write_buf(evt, 3);
+					}
+				}
+			}
+		} else {
+			if(chord_state == CHORD_PENDING){
+				uint32_t held = millis - chord_start;
+				if(held >= CHORD_SHORT_MS){
+					set_effect_mode((effect_mode + 1) % NUM_EFFECT_MODES);
+					if(main_b_cdc_enable){
+						uint8_t evt[3] = {0x01, 'C', 1};
+						udi_cdc_write_buf(evt, 3);
+					}
+				}
+			}
+			chord_state = CHORD_IDLE;
+		}
+
+		/* --- Interactive splash on button press during effect modes ---
+		   Fires the ~300 ms firmware "color spray" feedback animation when
+		   the user pokes a button while a light show is running.  Works on
+		   battery without USB.  Doesn't consume the button flag — the USB
+		   branch below still gets its turn to fire send_keys() if connected. */
+		if(splash_on_press_enabled && effect_mode != 0){
+			if(button1)      splash_start(0);
+			else if(button2) splash_start(1);
+			else if(button3) splash_start(2);
+			else if(button4) splash_start(3);
+		}
+
+		/* --- LED effect animation --- */
+		update_effects();
+
+		/* --- HID key sending (USB connected only) --- */
+		if(USBPower && ((millis - last_usb_comms) < 100)){
+			if(button1){ button1 = false; send_keys(1); }
+			if(button2){ button2 = false; send_keys(2); }
+			if(button3){ button3 = false; send_keys(3); }
+			if(button4){ button4 = false; send_keys(4); }
+
+			touch_sensors_measure();
+			if(p_selfcap_measure_data->measurement_done_touch == 1u){
+				p_selfcap_measure_data->measurement_done_touch = 0u;
+				slider_state = GET_SELFCAP_SENSOR_STATE(0);
+				if(slider_state){
+					slider_position = GET_SELFCAP_ROTOR_SLIDER_POSITION(0);
+					if(slider_position > last_slider_position + 10){
+						last_slider_position = slider_position;
+						if(slider_enabled) send_keys(6);
+					}
+					if(slider_position < last_slider_position - 10){
+						last_slider_position = slider_position;
+						if(slider_enabled) send_keys(5);
 					}
 				}
 			}
 		}
-		
-		//Update USB serial console if we got data
+
 		if(main_b_cdc_enable){
 			if(udi_cdc_get_nb_received_data()){
 				updateSerialConsole();
 			}
 		}
-		
-		//Go to sleep to save battery
-		//if (!USBPower && ((uart_event + 1000) < millis)) {
-		if (!USBPower && ((millis - uart_event) > 1000) && gamemode != SIMON_SOLO) {
+
+		if(!USBPower && ((millis - uart_event) > 1000)){
 			standby_sleep();
 		}
-		
-		
-		//Check serial ports
-		check_comms();
-		
-		run_games();
-		
-		play_sounds();
 	}
 }
 
-
-void send_data(void){
-	const uint16_t data = 1;
-	uint8_t delay = 50;
-	usart_write_job(&usart_top_instance, &data);
-	delay_cycles_ms(delay);
-	usart_write_job(&usart_right_instance, &data);
-	delay_cycles_ms(delay);
-	usart_write_job(&usart_bottom_instance, &data);
-	delay_cycles_ms(delay);
-	usart_write_job(&usart_left_instance, &data);
-	delay_cycles_ms(delay);
-	usart_write_job(&usart_usba_instance, &data);
-	delay_cycles_ms(delay);
-	usart_write_job(&usart_usbc_instance, &data);
-	delay_cycles_ms(delay);
-}
 
 void main_suspend_action(void)
 {
@@ -581,41 +641,6 @@ void rtc_overflow_callback(void)
 		touch_time_counter++;
 	}
 	
-	if(gamemode == SIMON_SOLO || gamemode == SIMON_MULTI_PRIMARY || gamemode == SIMON_MULTI_SECONDARY){
-		if(!port_pin_get_input_level(BUTTON1)){
-			tcc_restart_counter(&tcc2_instance);
-			tcc_set_compare_value(&tcc2_instance,0,219); //415Hz
-			
-			led_set_color(1,LED_COLOR_GREEN);
-		}
-		if(!port_pin_get_input_level(BUTTON2)){
-			tcc_restart_counter(&tcc2_instance);
-			tcc_set_compare_value(&tcc2_instance,0,293); //310Hz
-			
-			led_set_color(2,LED_COLOR_RED);
-		}
-		if(!port_pin_get_input_level(BUTTON3)){
-			tcc_restart_counter(&tcc2_instance);
-			tcc_set_compare_value(&tcc2_instance,0,360); //252Hz
-			
-			led_set_color(3,LED_COLOR_YELLOW);
-		}
-		if(!port_pin_get_input_level(BUTTON4)){
-			tcc_restart_counter(&tcc2_instance);
-			tcc_set_compare_value(&tcc2_instance,0,435); //209Hz
-			
-			led_set_color(4,LED_COLOR_BLUE);
-		}
-	
-		if(port_pin_get_input_level(BUTTON1) & port_pin_get_input_level(BUTTON2) & port_pin_get_input_level(BUTTON3) & port_pin_get_input_level(BUTTON4) & games_buzzer_off){
-			//tcc_set_compare_value(&tcc2_instance,0,0); //off
-			tcc_stop_counter(&tcc2_instance);
-			led_set_color(1,LED_COLOR_OFF);
-			led_set_color(2,LED_COLOR_OFF);
-			led_set_color(3,LED_COLOR_OFF);
-			led_set_color(4,LED_COLOR_OFF);
-		}
-	}
 }
 
 /*! \brief Configure the RTC timer callback
@@ -650,6 +675,220 @@ void configure_rtc_count(void)
 /*! \brief Initialize timer
  *
  */
+
+/* Full-saturation HSV→RGB. h/v both 0-255. */
+static void hsv_to_rgb(uint8_t h, uint8_t v, uint8_t *r, uint8_t *g, uint8_t *b){
+	uint8_t region = h / 43;
+	uint8_t rem    = (h - region * 43) * 6;
+	uint8_t q = (uint16_t)v * (255 - rem) >> 8;
+	uint8_t t = (uint16_t)v * rem >> 8;
+	switch(region){
+		case 0: *r = v; *g = t; *b = 0; break;
+		case 1: *r = q; *g = v; *b = 0; break;
+		case 2: *r = 0; *g = v; *b = t; break;
+		case 3: *r = 0; *g = q; *b = v; break;
+		case 4: *r = t; *g = 0; *b = v; break;
+		default:*r = v; *g = 0; *b = q; break;
+	}
+}
+
+/* Set effect mode, reset animation state, restore LEDs when going to 0. */
+void set_effect_mode(uint8_t mode){
+	effect_mode  = mode;
+	effect_step  = 0;
+	effect_hue   = 0;
+	effect_timer = millis;
+	if(mode == 0){
+		led_set_resting_color(1, led1color);
+		led_set_resting_color(2, led2color);
+		led_set_resting_color(3, led3color);
+		led_set_resting_color(4, led4color);
+	}
+	if(main_b_cdc_enable){
+		uint8_t evt[3] = {0x01, 'V', mode};
+		udi_cdc_write_buf(evt, 3);
+	}
+}
+
+/* Advance LED animation one frame; call every main-loop iteration.
+   Animates all 4 LEDs.  Bridges that want exclusive control of an LED
+   (e.g. Teams using LED4 for the mute indicator) must call set_effect_mode(0)
+   while they hold it — see TeamsBridge / FocusBridge in dc29/bridges/. */
+static void update_effects(void){
+	if(takeover_tick()) return;
+	if(splash_tick()) return;
+	if(effect_mode == 0) return;
+	uint32_t now = millis;
+
+	if(effect_mode == 1){
+		/* Rainbow chase: one LED lit at a time, hue cycles across LEDs and advances. */
+		if((now - effect_timer) < EFFECT_CHASE_STEP_MS) return;
+		effect_timer = now;
+		uint8_t off[3] = {0, 0, 0};
+		led_set_color(1, off); led_set_color(2, off); led_set_color(3, off); led_set_color(4, off);
+		uint8_t r, g, b;
+		hsv_to_rgb(effect_hue + effect_step * 64, 200, &r, &g, &b);
+		uint8_t color[3] = {r, g, b};
+		led_set_color(effect_step + 1, color);
+		effect_step = (effect_step + 1) % 4;
+		if(effect_step == 0) effect_hue += 16;
+
+	} else if(effect_mode == 2){
+		/* Breathe: all 4 LEDs pulse together with slow hue drift. */
+		if((now - effect_timer) < EFFECT_BREATHE_STEP_MS) return;
+		effect_timer = now;
+		uint8_t brightness = (effect_step < 128) ? effect_step * 2 : (255 - effect_step) * 2;
+		uint8_t r, g, b;
+		hsv_to_rgb(effect_hue, brightness, &r, &g, &b);
+		uint8_t color[3] = {r, g, b};
+		led_set_color(1, color); led_set_color(2, color); led_set_color(3, color); led_set_color(4, color);
+		if(++effect_step == 0) effect_hue += 8;
+
+	} else if(effect_mode == 3){
+		/* Color wipe: a single hue rolls across LEDs 1→2→3→4, then wipes back to off, then new hue.
+		   effect_step bits: low 2 bits = LED index (0–3); bit 2 = phase (0=fill, 1=wipe). */
+		if((now - effect_timer) < EFFECT_WIPE_STEP_MS) return;
+		effect_timer = now;
+		uint8_t idx = effect_step & 0x03;
+		uint8_t phase = (effect_step >> 2) & 0x01;
+		uint8_t r, g, b;
+		hsv_to_rgb(effect_hue, 220, &r, &g, &b);
+		uint8_t color[3] = {r, g, b};
+		uint8_t off[3] = {0, 0, 0};
+		led_set_color(idx + 1, phase ? off : color);
+		effect_step++;
+		if((effect_step & 0x07) == 0){
+			/* Completed both phases — bump hue for next cycle. */
+			effect_hue += 40;
+		}
+
+	} else if(effect_mode == 4){
+		/* Twinkle: each tick, randomly fade or sparkle one LED.  Soft random
+		   feel — values walk via a tiny LFSR, no globals needed beyond effect_step. */
+		if((now - effect_timer) < EFFECT_TWINKLE_STEP_MS) return;
+		effect_timer = now;
+		/* xorshift8 PRNG seeded with effect_step + millis low byte. */
+		uint8_t s = effect_step ^ (uint8_t)now;
+		s ^= s << 3; s ^= s >> 5; s ^= s << 1;
+		effect_step = s ? s : 1;
+		uint8_t which = s & 0x03;
+		uint8_t bright = (s >> 2) & 0x7F;
+		uint8_t r, g, b;
+		hsv_to_rgb(effect_hue + which * 16, bright * 2, &r, &g, &b);
+		uint8_t color[3] = {r, g, b};
+		led_set_color(which + 1, color);
+		if((s & 0x1F) == 0) effect_hue += 4;
+
+	} else if(effect_mode == 5){
+		/* Gradient slide: 4 LEDs show a smooth hue gradient, scrolling slowly. */
+		if((now - effect_timer) < EFFECT_GRADIENT_STEP_MS) return;
+		effect_timer = now;
+		for(uint8_t i = 0; i < 4; i++){
+			uint8_t r, g, b;
+			hsv_to_rgb(effect_hue + i * 32, 220, &r, &g, &b);
+			uint8_t color[3] = {r, g, b};
+			led_set_color(i + 1, color);
+		}
+		effect_hue += 2;
+
+	} else if(effect_mode == 6){
+		/* Theater chase: every Nth LED lit, others off, pattern shifts each tick.
+		   With 4 LEDs and stride 2: pattern alternates {1,3} on / {2,4} on. */
+		if((now - effect_timer) < EFFECT_THEATER_STEP_MS) return;
+		effect_timer = now;
+		uint8_t r, g, b;
+		hsv_to_rgb(effect_hue, 220, &r, &g, &b);
+		uint8_t color[3] = {r, g, b};
+		uint8_t off[3] = {0, 0, 0};
+		uint8_t phase = effect_step & 0x01;
+		led_set_color(1, (0 == phase) ? color : off);
+		led_set_color(2, (1 == phase) ? color : off);
+		led_set_color(3, (0 == phase) ? color : off);
+		led_set_color(4, (1 == phase) ? color : off);
+		effect_step++;
+		if((effect_step & 0x07) == 0) effect_hue += 24;
+
+	} else if(effect_mode == 7){
+		/* Cylon sweep: a single bright LED bounces back and forth across the 4 LEDs.
+		   effect_step low 3 bits = position 0..6 mapping to LED indices 0,1,2,3,2,1,0,(wrap). */
+		if((now - effect_timer) < EFFECT_CYLON_STEP_MS) return;
+		effect_timer = now;
+		uint8_t pos = effect_step & 0x07;
+		/* Map 0..7 → LED index using bounce: 0,1,2,3,2,1,0,1 → use abs trick. */
+		uint8_t led_idx = (pos < 4) ? pos : (6 - pos);
+		if(pos == 7) led_idx = 1;  /* fixup the wrap continuation */
+		uint8_t r, g, b;
+		hsv_to_rgb(effect_hue, 240, &r, &g, &b);
+		uint8_t color[3] = {r, g, b};
+		uint8_t dim[3]   = {(uint8_t)(r >> 4), (uint8_t)(g >> 4), (uint8_t)(b >> 4)};
+		for(uint8_t i = 0; i < 4; i++){
+			led_set_color(i + 1, (i == led_idx) ? color : dim);
+		}
+		effect_step++;
+		if((effect_step & 0x3F) == 0) effect_hue += 16;
+
+	} else if(effect_mode == 8){
+		/* Particles: 2D physics-driven bouncing balls on the 2x2 LED grid.
+		 * Each LED is a corner of the box; brightness = sum of contributions
+		 * from each particle, falling off with manhattan distance.  Hue per
+		 * particle bumps on every wall bounce (different deltas per axis to
+		 * break out of periodicity). */
+		if((now - effect_timer) < EFFECT_PARTICLES_STEP_MS) return;
+		effect_timer = now;
+
+		if(!particles_initialized) particles_init();
+
+		/* Step physics: advance positions, bounce off all four walls. */
+		for(uint8_t p = 0; p < PARTICLE_COUNT; p++){
+			Particle *pt = &particles[p];
+			pt->x += pt->vx;
+			pt->y += pt->vy;
+			if(pt->x < 0){
+				pt->x = -pt->x; pt->vx = -pt->vx; pt->hue += 37;
+			} else if(pt->x > PARTICLE_RANGE){
+				pt->x = 2 * PARTICLE_RANGE - pt->x; pt->vx = -pt->vx; pt->hue += 37;
+			}
+			if(pt->y < 0){
+				pt->y = -pt->y; pt->vy = -pt->vy; pt->hue += 23;
+			} else if(pt->y > PARTICLE_RANGE){
+				pt->y = 2 * PARTICLE_RANGE - pt->y; pt->vy = -pt->vy; pt->hue += 23;
+			}
+		}
+
+		/* Render each LED-corner with blended particle contributions. */
+		for(uint8_t i = 0; i < 4; i++){
+			int16_t cx = led_corner_x[i];
+			int16_t cy = led_corner_y[i];
+			uint16_t accum_brightness = 0;
+			uint16_t hue_weighted = 0;
+			uint16_t total_weight = 0;
+			for(uint8_t p = 0; p < PARTICLE_COUNT; p++){
+				int16_t dx = particles[p].x - cx;
+				int16_t dy = particles[p].y - cy;
+				if(dx < 0) dx = -dx;
+				if(dy < 0) dy = -dy;
+				int16_t d = dx + dy;            /* manhattan distance, 0..510 */
+				if(d < PARTICLE_FALLOFF){
+					uint16_t falloff = (uint16_t)(PARTICLE_FALLOFF - d);   /* 0..200 */
+					uint16_t contrib = (falloff * particles[p].bright) / PARTICLE_FALLOFF;
+					accum_brightness += contrib;
+					hue_weighted += particles[p].hue * (falloff >> 3);     /* /8 to fit u16 */
+					total_weight += (falloff >> 3);
+				}
+			}
+			if(accum_brightness > 255) accum_brightness = 255;
+			uint8_t color[3] = {0, 0, 0};
+			if(total_weight > 0 && accum_brightness > 0){
+				uint8_t hue = (uint8_t)(hue_weighted / total_weight);
+				uint8_t r, g, b;
+				hsv_to_rgb(hue, (uint8_t)accum_brightness, &r, &g, &b);
+				color[0] = r; color[1] = g; color[2] = b;
+			}
+			led_set_color(i + 1, color);
+		}
+	}
+}
+
 void timer_init(void)
 {
 	/* Configure and enable RTC */
@@ -726,16 +965,11 @@ void main_cdc_set_dtr(uint8_t port, bool b_enable)
 	}
 }
 
-void reset_eeprom(void){ //reset entire EEPROM including challenge and game data
+void reset_eeprom(void){
 	rww_eeprom_emulator_erase_memory();
 	rww_eeprom_emulator_init();
 	fwversion[0] = FIRMWARE_VERSION;
 	rww_eeprom_emulator_write_buffer(EEP_FIRMWARE_VERSION, fwversion, 1);
-	uint8_t eepdata[1];
-	eepdata[0] = 0;
-	for(int x=1; x<EEP_LED_BRIGHTNESS; x++){
-		rww_eeprom_emulator_write_buffer(x, eepdata, 1);
-	}
 	uint8_t leddata[3];
 	leddata[0] = 255; //full brightness as default
 	rww_eeprom_emulator_write_buffer(EEP_LED_BRIGHTNESS, leddata, 1);
@@ -777,12 +1011,6 @@ void reset_eeprom(void){ //reset entire EEPROM including challenge and game data
 }
 
 void reset_user_eeprom(void){ //Reset the LED and keymap data
-	#if DEBUG > 0 //Reset badge challenge info in debug mode
-	uint8_t bytes[80] = {0};
-	rww_eeprom_emulator_write_buffer(EEP_CHALLENGE_CONNECTED_TYPES, bytes, 5);
-	rww_eeprom_emulator_write_buffer(EEP_CHALLENGE_BADGE_SERIALS, bytes, 80);
-	rww_eeprom_emulator_write_buffer(EEP_GAME_SIMON_SOLO_HIGH_SCORE, bytes, 18);
-	#endif
 	uint8_t leddata[3];
 	leddata[0] = 255; //full brightness as default
 	rww_eeprom_emulator_write_buffer(EEP_LED_BRIGHTNESS, leddata, 1);
@@ -823,35 +1051,16 @@ void reset_user_eeprom(void){ //Reset the LED and keymap data
 	rww_eeprom_emulator_commit_page_buffer();
 	
 	rww_eeprom_emulator_read_buffer(EEP_LED_1_COLOR, led1color, 3);
-	led_set_color(1,led1color);
+	led_set_resting_color(1,led1color);
 	rww_eeprom_emulator_read_buffer(EEP_LED_2_COLOR, led2color, 3);
-	led_set_color(2,led2color);
+	led_set_resting_color(2,led2color);
 	rww_eeprom_emulator_read_buffer(EEP_LED_3_COLOR, led3color, 3);
-	led_set_color(3,led3color);
+	led_set_resting_color(3,led3color);
 	rww_eeprom_emulator_read_buffer(EEP_LED_4_COLOR, led4color, 3);
-	led_set_color(4,led4color);
+	led_set_resting_color(4,led4color);
 }
 
 void read_eeprom(void){
-	uint8_t bytes[18];
-	rww_eeprom_emulator_read_buffer(EEP_CHALLENGE_CONNECTED_TYPES,bytes, 5);
-	challengedata.badgetypes = bytes[0];
-	challengedata.numconnected = bytes[1] | (bytes[2] << 8);
-	challengedata.numshared = bytes[3] | (bytes[4] << 8);
-	
-	rww_eeprom_emulator_read_buffer(EEP_CHALLENGE_BADGE_SERIALS,serialnumlist.bytes, 80);
-	
-	rww_eeprom_emulator_read_buffer(EEP_GAME_SIMON_SOLO_HIGH_SCORE,bytes, 18);
-	gamedata.simon_solo_high_score = bytes[0] | (bytes[1]<<8);
-	gamedata.simon_multi_high_score = bytes[2] | (bytes[3]<<8);
-	gamedata.simon_multi_connections = bytes[4] | (bytes[5]<<8);
-	gamedata.simon_multi_games_played = bytes[6] | (bytes[7]<<8);
-	gamedata.wam_solo_high_score = bytes[8] | (bytes[9]<<8);
-	gamedata.wam_multi_high_score = bytes[10] | (bytes[11]<<8);
-	gamedata.wam_multi_connections = bytes[12] | (bytes[13]<<8);
-	gamedata.wam_multi_games_played = bytes[14] | (bytes[15]<<8);
-	gamedata.wam_multi_wins = bytes[16] | (bytes[17]<<8);
-	
 	rww_eeprom_emulator_read_buffer(EEP_LED_1_COLOR, led1color, 3);
 	rww_eeprom_emulator_read_buffer(EEP_LED_2_COLOR, led2color, 3);
 	rww_eeprom_emulator_read_buffer(EEP_LED_3_COLOR, led3color, 3);

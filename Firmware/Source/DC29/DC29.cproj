@@ -376,7 +376,7 @@
     <ListValues>
       <Value>NDEBUG</Value>
       <Value>BOARD=SAMD21_XPLAINED_PRO</Value>
-      <Value>__SAMD21J18A__</Value>
+      <Value>__SAMD21G16B__</Value>
       <Value>EXTINT_CALLBACK_MODE=true</Value>
       <Value>UDD_ENABLE</Value>
       <Value>ARM_MATH_CM0PLUS=true</Value>
@@ -462,7 +462,7 @@
     </ListValues>
   </armgcc.linker.libraries.LibrarySearchPaths>
   <armgcc.linker.optimization.GarbageCollectUnusedSections>True</armgcc.linker.optimization.GarbageCollectUnusedSections>
-  <armgcc.linker.miscellaneous.LinkerFlags>-Wl,--entry=Reset_Handler -Wl,--cref -mthumb -T../src/ASF/sam0/utils/linker_scripts/samd21/gcc/samd21j18a_flash.ld</armgcc.linker.miscellaneous.LinkerFlags>
+  <armgcc.linker.miscellaneous.LinkerFlags>-Wl,--entry=Reset_Handler -Wl,--cref -mthumb -T../src/samd21g16b_flash.ld</armgcc.linker.miscellaneous.LinkerFlags>
   <armgcc.assembler.general.IncludePaths>
     <ListValues>
       <Value>../src</Value>
@@ -517,7 +517,7 @@
       <Value>../src/ASF/common/services/usb/class/composite/device</Value>
     </ListValues>
   </armgcc.assembler.general.IncludePaths>
-  <armgcc.preprocessingassembler.general.AssemblerFlags>-DARM_MATH_CM0PLUS=true -DBOARD=SAMD21_XPLAINED_PRO -DEXTINT_CALLBACK_MODE=true -DUDD_ENABLE -DUSB_DEVICE_LPM_SUPPORT -D__SAMD21J18A__ -DUSART_CALLBACK_MODE=true -DSYSTICK_MODE -DRTC_COUNT_ASYNC=true -DTC_ASYNC=false -DTCC_ASYNC=false</armgcc.preprocessingassembler.general.AssemblerFlags>
+  <armgcc.preprocessingassembler.general.AssemblerFlags>-DARM_MATH_CM0PLUS=true -DBOARD=SAMD21_XPLAINED_PRO -DEXTINT_CALLBACK_MODE=true -DUDD_ENABLE -DUSB_DEVICE_LPM_SUPPORT -D__SAMD21G16B__ -DUSART_CALLBACK_MODE=true -DSYSTICK_MODE -DRTC_COUNT_ASYNC=true -DTC_ASYNC=false -DTCC_ASYNC=false</armgcc.preprocessingassembler.general.AssemblerFlags>
   <armgcc.preprocessingassembler.general.IncludePaths>
     <ListValues>
       <Value>../src</Value>
@@ -896,12 +896,6 @@
     <Folder Include="src\qtouch\" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="src\games.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="src\games.h">
-      <SubType>compile</SubType>
-    </Compile>
     <Compile Include="src\keys.c">
       <SubType>compile</SubType>
     </Compile>
