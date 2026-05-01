@@ -136,10 +136,10 @@ void set_effect_mode(uint8_t mode) {
 | Mode | Step interval | Algorithm |
 |------|--------------|-----------|
 | 0 (off) | N/A | Returns immediately |
-| 1 (rainbow-chase) | 150 ms | One LED lit at a time; `hsv_to_rgb(hue + step * 85, 200)`, step cycles 0–2, hue += 16 per full cycle |
-| 2 (breathe) | 8 ms | All LEDs together; brightness = triangle wave 0→255→0, `effect_step` wraps at 256, hue += 8 per full breath |
+| 1 (rainbow-chase) | 150 ms | One LED lit at a time; `hsv_to_rgb(hue + step * 64, 200)`, step cycles 0–3 across all four LEDs, hue += 16 per full cycle |
+| 2 (breathe) | 8 ms | All four LEDs together; brightness = triangle wave 0→255→0, `effect_step` wraps at 256, hue += 8 per full breath |
 
-**LED 4 is never touched by `update_effects()`** — it is reserved for the mute-state indicator.
+`update_effects()` animates all four LEDs.  Bridges that need exclusive control of an LED — Teams's `LED4` mute indicator, FocusBridge's per-app pages — must suspend the effect via `set_effect_mode(0)` while they hold ownership and restore the prior mode on release.  `TeamsBridge._set_meeting_state()` and `FocusBridge.run()` both implement this save/restore pattern.
 
 The internal `hsv_to_rgb()` is a fixed-point integer implementation (h and v both 0–255).
 

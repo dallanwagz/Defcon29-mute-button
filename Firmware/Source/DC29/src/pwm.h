@@ -61,6 +61,20 @@ void led_set_resting_color(uint8_t led, uint8_t color[3]);
 void takeover_start(uint8_t src_0);
 bool takeover_tick(void);
 
+/* Non-blocking ~300 ms "splash" animation — the fidget-toy interaction.
+ * Captures the source LED's current color, freezes it briefly, then sprays
+ * outward to the other LEDs as a localized burst that fades back to the
+ * underlying scene.  Designed to be called from the main loop on button
+ * press while an effect mode is running, so the user can poke the toy.
+ *
+ * splash_start(src_0): src_0 is 0-based button index.  Cancels any in-
+ *   progress splash and restarts.  Does NOT cancel a running takeover.
+ * splash_tick(): call every main-loop iteration.  Returns true while a
+ *   splash is rendering (caller should skip other LED updates).  Once it
+ *   returns false, the underlying effect/static state resumes. */
+void splash_start(uint8_t src_0);
+bool splash_tick(void);
+
 /* Non-blocking buzzer. */
 void buzzer_play(uint16_t freq_hz, uint8_t duration_ms);
 void buzzer_cancel(void);

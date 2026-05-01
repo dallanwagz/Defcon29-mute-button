@@ -21,18 +21,28 @@ This document captures the exact user statements and design decisions from the d
 ### Color semantics — Option A (positional, strict)
 
 **User prompt:**
-> "let's go Option A — Enforce strict positional semantics (safety first) → button 1 always has a warm/red tint even if the action isn't dangerous — the muscle memory value is worth the imperfect semantic fit"
+> "let's go Option A — Enforce strict positional semantics (safety first) → muscle memory value is worth the imperfect semantic fit"
+
+**Layout updated 2026-05-01:** Red moved from top-left (B1) to bottom-right
+(B4) — "i want the red button to always be in the bottom right." This put the
+mute indicators (Teams B4 toggle-mute, Slack B4 huddle-mute) on the
+positional red slot, eliminating the previous "B4 is the only sanctioned
+exception" carveout.
 
 **What this means:** Every page, every app, every context — the four button positions always carry the same color family. You build muscle memory across all 15+ apps, not per-app. Slightly imperfect semantic fits are acceptable; breaking the positional rule is not.
 
-| Button | Color family | Semantic |
-|--------|-------------|----------|
-| B1 | Warm red | Destructive / exit / undo / close |
-| B2 | Cool blue | Status / visibility / toggle / communicate |
-| B3 | Amber | Navigate / find / search / jump |
-| B4 | Green | Create / save / confirm / generate |
+| Button | Position      | Color family | Semantic |
+|--------|---------------|--------------|----------|
+| B1     | Top-left      | Green        | Create / save / confirm / generate |
+| B2     | Top-right     | Cool blue    | Status / visibility / toggle / communicate |
+| B3     | Bottom-left   | Amber        | Navigate / find / search / jump |
+| B4     | Bottom-right  | Warm red     | Destructive / exit / undo / close |
 
-Exception: Teams B4 mute indicator is safety-critical — red=muted, green=live overrides positional green. This is intentional and the only sanctioned exception.
+Teams toggle-mute and Slack huddle-mute live on B4 by design — the dynamic
+mute-state LED (red=muted, green=live) is now naturally aligned with the red
+slot rather than overriding it. Leave-call on Teams B1 keeps a red LED
+override (destructive action in the only Teams slot remaining) — minor
+positional violation, retained for ergonomics.
 
 ---
 
@@ -221,36 +231,284 @@ Only touch LEDs when actually transitioning into or out of a meeting.
 ### 4. Outlook bridge LED and delete UX
 
 **Changes:**
-- Delete (B1) LED changed from warm red `(220, 35, 0)` → pure red `(220, 0, 0)`.
+- Delete (originally B1, moved to B4 in the 2026-05-01 swap) LED changed from warm red `(220, 35, 0)` → pure red `(220, 0, 0)`.
 - After delete keypress, plays an ascending two-tone Tink jingle via `afplay` (macOS only): rate 0.85 then rate 1.4, 70ms apart. Runs as a background asyncio task so it doesn't block the button handler.
 - Implementation in `dc29/bridges/outlook.py`: `_play_delete_sound()` async method + `asyncio.create_task()` in `handle_button`.
 
 ---
 
-## Current working state (as of 2026-05-01)
+## Session 3 (2026-05-01) — feature explosion
+
+### Positional swap: red moves to bottom-right
+
+User: *"i want the red button to always be in the bottom right"*
+
+`POSITION_ACTIVE`/`POSITION_DIM` swapped 1↔4 in `colors.py`; all 15 PageDefs in
+`registry.py` had `button_actions[1]` swapped with `button_actions[4]`; Outlook
+delete moved from B1 → B4 with its breathe-pulse animation rewritten to sweep
+LEDs 1–3 instead of 2–4.  Teams's mute indicator on B4 went from "the only
+sanctioned exception" to *naturally aligned* with the new positional rule.
+
+| Button | Position | Color | Semantic |
+|---|---|---|---|
+| B1 | Top-left | Green | Create / save / confirm |
+| B2 | Top-right | Cool blue | Status / visibility |
+| B3 | Bottom-left | Amber | Navigate / find |
+| B4 | Bottom-right | Warm red | Destructive / delete |
+
+### LED4 freed from "reserved for mute"
+
+Old design hard-reserved LED4 — `update_effects()` skipped it.  Refactored so
+all firmware effects animate all four LEDs.  Bridges that need exclusive
+control of LED4 (Teams toggle-mute, Slack huddle-mute) now suspend the
+effect via `set_effect_mode(0)` on engagement and restore on release.
+Removed "LED 4 reserved" language from CLAUDE.md, all spine docs, all branch
+docs, code comments.
+
+### Bridge architecture: manifest + manager + hot-reload
+
+The whole bridge layer was refactored from "hardcoded list in `_run_flow`" to
+a registry-driven system supporting live add/remove of bridges from the TUI.
+
+* **`dc29/bridges/manifest.py`** — single source of truth for available
+  bridges.  18 → now 20 entries (15 generic + Slack/Outlook/Teams + audio-reactive + beat-strobe).
+* **`dc29/bridges/manager.py`** — `BridgeManager.reconcile()` diffs running
+  set vs `cfg.enabled_bridges` and starts/stops asyncio tasks accordingly.
+  Cleanly cancels stopped bridges so their `finally` blocks (LED clear,
+  hook removal) actually run before the serial port closes.
+* **`BadgeAPI` priority handler registry** — replaced the linked-list
+  button-hook chain (couldn't safely add/remove middle nodes) with a
+  priority-ordered list of `_ButtonHandler` records.  Reader thread
+  snapshots under a lock and dispatches in priority order; first claim
+  wins, falls through to `on_button_press` callback otherwise.
+* **Default: every bridge is OFF.**  User opts in via CLI `--enable <name>`
+  (repeatable) or `--enable-all`, config `[bridges] enabled = [...]`, or
+  the TUI Bridges & Inputs tab (live toggle = live reconcile).
+
+### Sticky focus LEDs
+
+User: *"its annoying having the lights go off when an app isnt in focus for me"*
+
+New `Config.sticky_focus_leds` (default off).  When on, `FocusBridge` skips
+`_clear_page_leds()` on focus loss — last app's colors persist until
+another bridged app gains focus.  Toggleable via `--sticky-leds` CLI,
+config, or TUI checkbox.
+
+### Slider + splash control surfaces
+
+Two new RAM-only firmware toggles, both default-on:
+
+* **`0x01 'S' 0/1`** — disable/enable capacitive touch slider's HID
+  volume-up/down injection.  Slider keeps scanning so the position cache
+  stays consistent; only the keystroke is gated.
+* **`0x01 'I' 0/1`** — disable/enable interactive splash-on-press.
+
+`badge.set_slider_enabled()` and `badge.set_splash_on_press()` mirror these.
+
+### Splash-on-press fidget animation (firmware)
+
+User: *"if button is pressed that color freezes slightly and sprays out across the
+other LEDs in a 300ms espque animation… imagine this is a mobile mini DJ
+wannabe lighthow for himself and himself only lol"*
+
+`splash_start(src_0)` + `splash_tick()` in `pwm.c` — captures the pressed
+LED's *currently displayed* color from `ledvalues[]` (so it picks up the
+running effect's hue), freezes for 60 ms, sprays at 100% to source / 90% to
+adjacents / 50% to opposite, then settles back to resting via cross-fade.
+Works on battery without USB.  Wired into `main.c` button-press path so
+button presses during effect modes fire the splash, regardless of USB.
+
+### Atomic paint-all firmware command
+
+User asked how fast we could push frames.  Measured: ~600 fps before host
+write-buffer saturates the firmware CDC reader.
+
+`0x01 'P' r1 g1 b1 r2 g2 b2 r3 g3 b3 r4 g4 b4` — 13 bytes paints all four
+LEDs in one main-loop iteration.  Halves bandwidth vs four `L` commands and
+prevents inter-LED tearing during animation streams.  `escape_args` buffer
+bumped from 4 → 12 to fit the payload.  Python wrapper:
+`BadgeAPI.set_all_leds(c1, c2, c3, c4)`.
+
+### 5 new firmware effect modes + particles
+
+Bumped `NUM_EFFECT_MODES` from 3 → 9.  All operate on the 4-LED grid; all
+respect the Teams/FocusBridge handoff via `set_effect_mode(0)`.
+
+| Mode | Name | Description |
+|---|---|---|
+| 3 | Wipe | A single hue rolls across LEDs 1→4, wipes off, new hue |
+| 4 | Twinkle | xorshift8 sparkles — one LED at a time at random brightness |
+| 5 | Gradient | Smooth scrolling 4-LED hue gradient |
+| 6 | Theater | Marquee alternating odd/even LEDs |
+| 7 | Cylon | Knight-Rider sweep with dim trail |
+| **8** | **Particles** | **2D physics: two color blobs drift through the 2×2 grid, bounce off walls, hue shifts on bounce** |
+
+The 2x2 grid layout drove the particles design:
+
+```
+LED1 ─ LED2     (top row)
+LED3 ─ LED4     (bottom row)
+```
+
+Particles are int16 (x,y) in [0,255] with int16 (vx,vy) per-tick velocities.
+Each LED-corner accumulates contributions from each particle weighted by
+manhattan distance with falloff radius 200/510.  No floats, no fixed-point
+math — small enough the math fits in int16.
+
+### Scene library (`dc29/scenes.py`)
+
+User: *"if we build out the architecture for it we can then have an agent iterate
+on creating essentially light shows lol"*
+
+Authorable TOML scene format with three payload kinds:
+
+* **Static** — 4 LED colors, applied once and held.
+* **Animation** — keyframe list with `t`/`leds` entries, linear or step
+  interpolation, optional loop, fps capped at 60.
+* **Firmware** — pointer at one of the 9 effect modes.
+
+Stored at `~/.config/dc29/scenes/<slug>.toml`.  Hand-rolled TOML emitter
+keeps the format predictable for agents.  CLI: `dc29 scene save/play/list/delete`.
+
+### Stats module (`dc29/stats.py`)
+
+User: *"funny stats like emails deleted, unique teams meetings joined, mute mic
+button presses… stats for a nerd that they dont need but secretly want"*
+
+Singleton thread-safe counter / unique-set store, atomic TOML save every 30s
++ on shutdown.  Privacy-preserving (local only, never sent anywhere) at
+`~/.config/dc29/stats.toml`.  Wired into Outlook delete, Teams meeting
+join + mute toggle, button presses (in `BadgeAPI._dispatch_rx`), focus
+changes, bridge starts, Spotify track plays.  CLI: `dc29 stats / reset / export`.
+TUI: dedicated Stats tab (#6) with auto-refresh.
+
+### Audio reactive (BlackHole + FFT)
+
+Spotify's `/audio-analysis` endpoint we'd planned to use returned 403 — they
+deprecated it for new dev apps on 2024-11-27.  Pivoted to live FFT via
+[BlackHole](https://github.com/ExistentialAudio/BlackHole) virtual audio
+loopback driver.
+
+* **`dc29/audio.py`** — `AudioCapture` runs PortAudio callback, rolls 2048-
+  sample buffer, computes windowed real-FFT every 23 ms.  Output:
+  `AudioFeatures(rms, bass, mid, treble, beat, chroma[12])` at ~43 fps.
+  Beat detector: rolling-window energy threshold on the bass band (1.5σ +
+  absolute floor, 250 ms minimum interval = 240 BPM ceiling).
+* **`dc29/bridges/audio_reactive.py`** — main reactive bridge.  60 fps
+  render loop emits one `set_all_leds` per frame.  Maps `chroma` low/high
+  halves → LED2/3, `bass` → LED1, `treble` → LED4.  `loudness` → brightness
+  scalar.  Auto-engages on RMS > 0.02; releases after 1.5s of silence.
+* **`dc29/bridges/beat_strobe.py`** — DJ-rig sibling.  On each beat, fires a
+  50 ms strobe burst at 200 Hz alternating saturated palette → white → off.
+  Idle baseline: dim purple-ish.
+* **Spotify metadata as palette context** — kept the `SpotifyClient`
+  for `/me/player/currently-playing` only (still 200s).  Audio-reactive
+  bridge polls every 10s and shifts its palette per artist (stable hash
+  → consistent hue family).  Live FFT drives reactivity, Spotify drives mood.
+
+### Paint mode TUI ("Effects & Paint")
+
+Rebuilt EffectsTab as a full WYSIWYG surface:
+
+* 4 clickable LED swatches showing live colors with selected-LED border.
+* RGB integer inputs + hex input (synced via `Input.Changed` with
+  `prevent(...)` to avoid feedback loops).
+* "Apply to all LEDs" + "All off" buttons using `set_all_leds`.
+* All 9 effect modes as RadioSet entries with descriptions from
+  `EFFECT_DESCRIPTIONS`.
+* Saved-scenes dropdown with Play/Stop/Refresh.
+* Brightness scalar input.
+* Toggles for splash on press, button flash, sticky focus LEDs.
+* **Auto-grab paint mode** — touching any input silently disables every
+  bridge + suspends effect, snapshotting prior state.  Yellow banner shows
+  "Paint mode active".  Restored from log button or by re-enabling bridges.
+* **Teams safety carve-out** — if `mute_state != NOT_IN_MEETING`, paint
+  mode shows a red "🔒 Paint mode locked" banner and refuses LED writes.
+  The mute LED on B4 always wins during a meeting.
+
+### TUI tab structure (final)
+
+| Key | Tab |
+|---|---|
+| 1 | Dashboard |
+| 2 | Keys |
+| 3 | LEDs (legacy slider view) |
+| 4 | Effects & Paint |
+| 5 | Bridges & Inputs (auto-rendered from manifest) |
+| 6 | Stats |
+| 7 | Log |
+
+### Demo bridges (the "flex" pieces)
+
+User: *"flex our muscles, show off our ability to optimize both the software
+and the hardware"*
+
+Two demos shipped:
+
+* **Particles** (firmware mode 8) — runs without host, on battery.
+* **beat-strobe** (Python bridge) — 200 Hz strobe stabs synced to live
+  audio beats.  Hot-toggleable.  Auto-engages on first beat, releases on
+  silence.
+
+### Build + flash tooling
+
+* **`BUILD_MACOS.md`** — full Makefile-based macOS build path replacing
+  Microchip Studio.  Uses extracted Homebrew toolchain at
+  `~/opt/arm-gnu-toolchain/`.  The Makefile (`Firmware/Source/DC29/Makefile`)
+  needs `__SAMD21G16B__` define, `samd21g16b_flash.ld` linker script,
+  `-fcommon` (GCC 10+ default change), `-flto` (so we fit in 56 KB on GCC 15).
+* **`/flash-badge` slash command** at `.claude/commands/flash-badge.md` —
+  build → poll `/Volumes/*/INFO_UF2.TXT` → copy → verify CDC re-enumeration.
+  Documented gotchas (button-during-reboot trap, J18A vs G16B header drift).
+* **`Firmware/Source/DC29/scripts/`** — `flash.sh` / `console.sh` /
+  `dev.sh` for users who prefer shell over the slash command.
+
+### Final firmware size
+
+**41,168 / 57,344 bytes** (~28% headroom).  Built with GCC 15 + LTO via the
+macOS Makefile.
+
+---
+
+## Current working state (as of 2026-05-01, end of session 3)
 
 ### What works end-to-end
 
 ```bash
-dc29 start        # TUI + all bridges: Teams, Slack, Outlook, 15 app pages
-dc29 flow -v      # Headless, all bridges, verbose logs
-dc29 diagnose     # Show EEPROM keymaps + active app
-dc29 clear-keys   # Zero EEPROM macros (run once to eliminate double-injection)
+dc29 start --enable-all              # TUI + every bridge
+dc29 start --enable teams --enable audio-reactive   # selective
+dc29 flow -v --enable-all            # headless, every bridge
+dc29 set-effect 8                    # firmware particles
+dc29 scene play sunrise              # play a saved scene
+dc29 stats                           # show local nerd-fuel
+dc29 audio status                    # confirm BlackHole detected
+dc29 spotify auth                    # one-time OAuth flow
+dc29 bridges list                    # discover what's enable-able
 ```
 
-- Teams mute indicator: LED 4 red/green/off tracks live meeting state
-- Focus bridges: Outlook, Slack, VS Code, Cursor, Figma, Notion, Jira, GitHub, Chrome, + 6 more
-- Outlook delete: pure red + ascending Tink jingle feedback
-- Button press animation: firmware takeover ripple (additive color blend, ~200ms)
-- TUI: live companion showing active page name, button colors, action labels
+**Bridges (default off, opt-in):**
+- 15 generic FocusBridge apps (Chrome, VSCode, Figma, Notion, JIRA, GitHub, Linear, …)
+- Outlook (delete + Tink jingle, B4)
+- Slack (huddle mute indicator on B4)
+- Teams (full meeting page, mute indicator on B4)
+- audio-reactive (BlackHole + FFT, sweeping color reactivity)
+- beat-strobe (200 Hz strobe stabs on detected beats)
+
+**Firmware effects (live on the badge):**
+- 9 modes: off, rainbow-chase, breathe, wipe, twinkle, gradient, theater, cylon, particles
+- All 4 LEDs animated; bridges suspend the active mode while they own LEDs
+- Splash-on-press fidget animation works on battery without USB
+- Atomic 4-LED paint command for animation streams (~600 fps measured ceiling)
+
+**TUI tabs:** Dashboard / Keys / LEDs / Effects & Paint / Bridges & Inputs / Stats / Log
 
 ### Known limitations / not yet tested
 
-- `dc29 autostart install` runs `dc29 teams` only (headless Teams bridge). Does **not** run Slack/Outlook/generic pages and does **not** include the TUI. The TUI requires a terminal.
-  - **Recommended:** Add `dc29 start` to login items manually (System Settings → General → Login Items) pointing at a shell script that opens a new iTerm2 tab.
-  - Or edit the generated launchd plist at `~/Library/LaunchAgents/com.dc29badge.teams.plist` to change `teams` → `flow`.
-- Slack huddle mute detection not yet validated end-to-end.
-- Windows platform untested with the new bridge stack.
+- `dc29 autostart install` still runs `dc29 teams` only — needs an update to support `dc29 start` with `--enable-all` and a TUI-aware launcher script.
+- Slack huddle mute detection not validated end-to-end.
+- Windows platform untested — most of the bridge stack is platform-agnostic but pynput/AppleScript/BlackHole are Mac-specific.
+- BlackHole on Windows: not investigated.  VB-Cable is the rough equivalent; would require swapping the device-detection logic in `dc29/audio.py`.
+- Teams + Spotify tokens persist at `~/.dc29_teams_token` and `~/.dc29_spotify_token` (mode 0600).  No token rotation logic if the user revokes access — bridge will fail silently and re-auth is a manual `dc29 spotify auth` / Teams pairing dance.
 
 ### Install from scratch (new machine)
 

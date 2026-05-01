@@ -112,6 +112,9 @@ class Config:
 
     def __init__(self, raw: dict[str, Any]) -> None:
         self._raw = raw
+        # Runtime overrides — set by CLI flags or live TUI toggles.
+        # Take precedence over values from the config file.
+        self._overrides: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
     # Factory
@@ -152,6 +155,186 @@ class Config:
     def badge_brightness(self) -> float:
         v = self._raw.get("badge", {}).get("brightness", 1.0)
         return max(0.0, min(1.0, float(v)))
+
+    @property
+    def sticky_focus_leds(self) -> bool:
+        """Keep the last-focused page's LED colors when no app has focus.
+
+        Default: ``False`` — LEDs go dark when focus leaves all bridged apps,
+        which doubles as a visual "this app has a custom page" indicator.
+
+        Set ``True`` to leave the most recent page's colors lit until a
+        different bridged app gains focus.  Useful if the dark-when-unfocused
+        behavior feels distracting.
+
+        Configurable via ``[badge] sticky_focus_leds = true`` in
+        ``~/.config/dc29/config.toml``, the ``--sticky-leds`` CLI flag on
+        ``dc29 flow`` / ``dc29 start``, or the Effects tab in the TUI.
+        Runtime mutations via the property setter take effect on the next
+        focus event.
+        """
+        if "sticky_focus_leds" in self._overrides:
+            return bool(self._overrides["sticky_focus_leds"])
+        return bool(self._raw.get("badge", {}).get("sticky_focus_leds", False))
+
+    @sticky_focus_leds.setter
+    def sticky_focus_leds(self, value: bool) -> None:
+        self._overrides["sticky_focus_leds"] = bool(value)
+
+    @property
+    def slider_enabled(self) -> bool:
+        """Whether the capacitive touch slider injects HID volume keys.
+
+        Default: ``True`` — preserves the as-shipped behavior.  Disable via
+        ``[badge] slider_enabled = false`` in config, the ``--no-slider`` CLI
+        flag, or the TUI Bridges & Inputs tab.
+
+        RAM-only on the firmware side: every power cycle starts with the
+        slider enabled.  When this property is ``False`` at startup, dc29
+        proactively sends the disable command so the user setting persists
+        across reboots from the Python side.
+        """
+        if "slider_enabled" in self._overrides:
+            return bool(self._overrides["slider_enabled"])
+        return bool(self._raw.get("badge", {}).get("slider_enabled", True))
+
+    @slider_enabled.setter
+    def slider_enabled(self, value: bool) -> None:
+        self._overrides["slider_enabled"] = bool(value)
+
+    @property
+    def splash_on_press(self) -> bool:
+        """Whether button presses during a light-show fire the firmware splash.
+
+        Default: ``True`` — the fidget-toy feedback is the whole point of
+        having effect modes available, and works on battery without USB.
+
+        RAM-only firmware-side; dc29 re-applies on every startup.  Disable
+        via ``[badge] splash_on_press = false``, ``--no-splash`` CLI flag, or
+        the TUI Effects tab checkbox.
+        """
+        if "splash_on_press" in self._overrides:
+            return bool(self._overrides["splash_on_press"])
+        return bool(self._raw.get("badge", {}).get("splash_on_press", True))
+
+    @splash_on_press.setter
+    def splash_on_press(self, value: bool) -> None:
+        self._overrides["splash_on_press"] = bool(value)
+
+    # ------------------------------------------------------------------
+    # Spotify section
+    # ------------------------------------------------------------------
+
+    @property
+    def spotify_client_id(self) -> Optional[str]:
+        """Spotify Web API client ID — user provides their own dev app's ID.
+
+        Register a free app at https://developer.spotify.com/dashboard, add
+        ``http://localhost:8754/callback`` to its Redirect URIs, then put the
+        client ID in ``~/.config/dc29/config.toml``::
+
+            [spotify]
+            client_id = "..."
+        """
+        v = self._raw.get("spotify", {}).get("client_id")
+        return str(v) if v else None
+
+    @property
+    def spotify_redirect_uri(self) -> str:
+        """OAuth redirect URI; defaults to ``http://127.0.0.1:8754/callback``.
+
+        Spotify treats raw IP loopback as inherently secure and accepts it
+        without HTTPS, so the loopback IP form is preferred over ``localhost``
+        (which their dashboard now flags as "not secure" on some accounts).
+        Override only if you've registered a different URI on your Spotify app.
+        """
+        v = self._raw.get("spotify", {}).get("redirect_uri")
+        return str(v) if v else "http://127.0.0.1:8754/callback"
+
+    # ------------------------------------------------------------------
+    # Audio-reactive section (BlackHole + FFT)
+    # ------------------------------------------------------------------
+
+    @property
+    def audio_device(self) -> Optional[str]:
+        """Substring matched against device names in the audio capture init.
+
+        Default: ``None`` → auto-detect BlackHole (preferred), else the
+        system default input device.  Set explicitly via
+        ``[audio] device = "BlackHole 2ch"`` if you have multiple loopback
+        devices and want to be sure.
+        """
+        v = self._raw.get("audio", {}).get("device")
+        return str(v) if v else None
+
+    @property
+    def audio_beat_threshold(self) -> float:
+        """How many σ above the rolling bass-energy mean triggers a beat event.
+
+        Default ``1.5``.  Lower (e.g. ``1.0``) for more sensitive beat
+        detection on quiet passages; higher (e.g. ``2.0``) for cleaner beats
+        on hard-hitting tracks.  ``[audio] beat_threshold = ...`` in config.
+        """
+        try:
+            return float(self._raw.get("audio", {}).get("beat_threshold", 1.5))
+        except (TypeError, ValueError):
+            return 1.5
+
+    # ------------------------------------------------------------------
+    # Spotify section (continued — focus_only is the last property)
+    # ------------------------------------------------------------------
+
+    @property
+    def spotify_focus_only(self) -> bool:
+        """If true, react only when Spotify (or any music player) is focused.
+
+        Default false — reacts whenever Spotify is playing, regardless of
+        which app the user has focused.  Useful when you want the LEDs to
+        stay quiet during productivity work.
+        """
+        return bool(self._raw.get("spotify", {}).get("focus_only", False))
+
+    # ------------------------------------------------------------------
+    # Bridge enable/disable
+    # ------------------------------------------------------------------
+
+    @property
+    def enabled_bridges(self) -> set[str]:
+        """Set of bridge names the user has opted in to running.
+
+        Default: empty set — every bridge is disabled out of the box.
+        Users opt in via:
+          * CLI flags (``--enable <name>`` repeatable, ``--enable-all``)
+          * The ``[bridges] enabled = ["teams", ...]`` config key
+          * The TUI Bridges tab
+
+        Lookup order: in-process overrides (CLI/TUI) take precedence over
+        config-file values; if neither is set, the default is empty.
+        """
+        if "enabled_bridges" in self._overrides:
+            return set(self._overrides["enabled_bridges"])
+        raw = self._raw.get("bridges", {}).get("enabled", [])
+        if isinstance(raw, str):
+            raw = [s.strip() for s in raw.split(",") if s.strip()]
+        return {str(name).lower() for name in raw}
+
+    @enabled_bridges.setter
+    def enabled_bridges(self, value) -> None:
+        self._overrides["enabled_bridges"] = {str(n).lower() for n in value}
+
+    def is_bridge_enabled(self, name: str) -> bool:
+        """Return ``True`` if the named bridge should be started."""
+        return name.lower() in self.enabled_bridges
+
+    def set_bridge_enabled(self, name: str, enabled: bool) -> None:
+        """Toggle a single bridge in the enabled set (runtime mutation)."""
+        current = set(self.enabled_bridges)
+        n = name.lower()
+        if enabled:
+            current.add(n)
+        else:
+            current.discard(n)
+        self.enabled_bridges = current
 
     # ------------------------------------------------------------------
     # Teams section

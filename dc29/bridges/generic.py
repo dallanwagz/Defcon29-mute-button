@@ -67,14 +67,24 @@ class PageDef:
     """Complete definition for one app's bridge page.
 
     Args:
-        name:               Slug identifier (e.g. ``"vscode"``).
-        description:        One-line label shown in the TUI.
-        match_names:        Process or window-title substrings to watch for
-                            (case-insensitive).
-        button_actions:     Map of button number (1–4) → :class:`ActionDef`.
-        brand_color:        (R, G, B) for the context-switch flash animation.
-        match_window_title: ``True`` for web apps — match against the browser
-                            window title rather than the process name.
+        name:                   Slug identifier (e.g. ``"vscode"``).
+        description:            One-line label shown in the TUI.
+        match_names:            Process or window-title substrings to watch for
+                                (case-insensitive).
+        button_actions:         Map of button number (1–4) → :class:`ActionDef`.
+        brand_color:            (R, G, B) for the context-switch flash animation.
+        match_window_title:     ``True`` for web apps — match against the
+                                browser window title rather than the process
+                                name.
+        animate_destructive:    Fire the firmware takeover ripple animation when
+                                the destructive button (B4, positional red) is
+                                pressed. Default ``True``.  Set ``False`` for
+                                pages where B4 is a state indicator rather than
+                                a delete-style action (Teams toggle-mute, Slack
+                                huddle-mute).
+        destructive_button:     Which button position carries the destructive
+                                action.  Defaults to 4 (positional red after
+                                the 2026-05-01 swap).
     """
 
     name: str
@@ -83,6 +93,8 @@ class PageDef:
     button_actions: dict[int, ActionDef] = field(default_factory=dict)
     brand_color: Optional[tuple[int, int, int]] = None
     match_window_title: bool = False
+    animate_destructive: bool = True
+    destructive_button: int = 4
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +139,9 @@ class GenericFocusBridge(FocusBridge):
         action_def = self._page_def.button_actions.get(btn)
         if not action_def:
             return
+        if (self._page_def.animate_destructive
+                and btn == self._page_def.destructive_button):
+            self._badge.fire_takeover(btn)
         if not _PYNPUT_AVAILABLE:
             log.warning("pynput not installed — shortcut injection skipped")
             return

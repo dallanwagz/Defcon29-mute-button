@@ -76,6 +76,6 @@ Firmware/Source/DC29/src/
 - Flash space is tight — Debug builds don't fit. **Release only.**
 - Wrong linker script = firmware that doesn't boot. See [firmware-build.md](firmware-build.md).
 - EEPROM persists across flashes. Only a `FIRMWARE_VERSION` bump in `main.h` clears it.
-- **LED 4 is reserved** for the Teams mute indicator — never drive it from effect code.
+- **LED 4 is general-purpose.** Effects animate all 4 LEDs. Bridges that need exclusive control (Teams toggle-mute, Slack huddle-mute, FocusBridge during focus) suspend the firmware effect mode while they hold ownership — see `TeamsBridge._set_meeting_state()` for the save/restore pattern.
 
 Good luck, and have fun.

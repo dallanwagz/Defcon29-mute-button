@@ -155,12 +155,14 @@ dc29 config show
 
 ## LED effects
 
-The firmware has three built-in LED effect modes for LEDs 1–3 (LED 4 is always reserved for the Teams mute indicator):
+The firmware has three built-in LED effect modes that animate all four LEDs:
 
 | Mode | Command | Description |
 |------|---------|-------------|
 | Off | `dc29 set-effect 0` | Static EEPROM colors |
-| Rainbow chase | `dc29 set-effect 1` | One LED at a time, cycling hues |
-| Breathe | `dc29 set-effect 2` | All three LEDs fade in/out |
+| Rainbow chase | `dc29 set-effect 1` | One LED at a time, cycling hues across all 4 |
+| Breathe | `dc29 set-effect 2` | All four LEDs fade in/out together |
+
+When a bridge takes ownership of an LED for a state indicator (e.g. Teams's mute LED on B4 during a meeting, or a FocusBridge's per-app colors), the bridge automatically pauses the firmware effect and restores it afterwards — no user action needed.
 
 You can also cycle effects with the 4-button chord: hold all 4 buttons for 300 ms–2 s and release.

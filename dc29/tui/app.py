@@ -30,7 +30,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Optional
 
-from textual import on
+from textual import events, on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.color import Color
@@ -46,10 +46,13 @@ from textual.widgets import (
     Header,
     Input,
     Label,
+    ListItem,
+    ListView,
     RadioButton,
     RadioSet,
     RichLog,
     Rule,
+    Select,
     Static,
     TabbedContent,
     TabPane,
@@ -1052,7 +1055,19 @@ class LEDsTab(Container):
 
 
 class EffectsTab(Container):
-    """Tab 4: Effect mode selector + button flash toggle."""
+    """Tab 4: Effects & Paint — full WYSIWYG LED control surface.
+
+    Sections:
+      * Paint banner — surfaces when manual paint has auto-grabbed control
+        (silently disabling bridges + effect; restorable with one click).
+      * LED swatches — 4 colored cells you click to focus.
+      * RGB / hex inputs — synced to the focused LED, drive live updates.
+      * Built-in scenes — radio set of all firmware effect modes.
+      * Saved scenes — Select dropdown + Play button for TOML scenes
+        from ``~/.config/dc29/scenes/``.
+      * Toggles — splash on press, button flash, sticky focus LEDs.
+      * Brightness — global multiplier slider (Input).
+    """
 
     DEFAULT_CSS = """
     EffectsTab {
@@ -1068,59 +1083,438 @@ class EffectsTab(Container):
         margin-bottom: 1;
         padding-left: 2;
     }
+    EffectsTab .paint-banner {
+        background: $warning 30%;
+        color: $warning;
+        text-style: bold;
+        padding: 0 2;
+        margin-bottom: 1;
+        height: 3;
+        border: solid $warning;
+        display: none;
+    }
+    EffectsTab .paint-banner.-active {
+        display: block;
+    }
+    EffectsTab .paint-banner.-locked {
+        background: $error 30%;
+        color: $error;
+        border: solid $error;
+    }
+    EffectsTab #swatch-row {
+        height: 5;
+        margin-bottom: 1;
+    }
+    EffectsTab .led-swatch {
+        width: 1fr;
+        height: 5;
+        border: solid $panel-lighten-2;
+        text-align: center;
+        content-align: center middle;
+    }
+    EffectsTab .led-swatch.-selected {
+        border: thick $accent;
+    }
+    EffectsTab #color-controls {
+        height: auto;
+        padding: 1;
+        border: solid $panel-lighten-1;
+        margin-bottom: 1;
+    }
+    EffectsTab #color-controls Input {
+        width: 12;
+    }
+    EffectsTab #color-controls Label {
+        width: 4;
+        content-align: right middle;
+    }
+    EffectsTab #color-controls Horizontal {
+        height: 3;
+        margin-bottom: 0;
+    }
+    EffectsTab #hex-input {
+        width: 14;
+    }
+    EffectsTab #scene-section {
+        margin-top: 1;
+    }
     EffectsTab RadioSet {
         margin-bottom: 1;
         border: solid $panel-lighten-1;
         padding: 1;
         height: auto;
     }
-    EffectsTab #apply-effect {
+    EffectsTab #toggles-section {
+        margin-top: 2;
+    }
+    EffectsTab #brightness-row {
+        height: 3;
         margin-top: 1;
     }
-    EffectsTab #flash-section {
-        margin-top: 2;
+    EffectsTab .scene-row {
+        height: 3;
+        margin-bottom: 1;
     }
     """
 
-    _DESCRIPTIONS = {
-        "Off": "All LEDs stay at their set colors. No animation.",
-        "Rainbow Chase": "LEDs cycle through the full color wheel in a chasing pattern.",
-        "Breathe": "LEDs fade in and out smoothly (breathing effect).",
-    }
+    def __init__(self) -> None:
+        super().__init__()
+        # Per-LED current color cache (TUI-side mirror; updated on any paint).
+        self._led_colors: dict[int, tuple[int, int, int]] = {
+            1: (0, 0, 0), 2: (0, 0, 0), 3: (0, 0, 0), 4: (0, 0, 0),
+        }
+        self._selected_led: int = 1
 
     def compose(self) -> ComposeResult:
-        yield Label("EFFECT MODE", classes="section-title")
-        with RadioSet(id="effect-radio"):
-            yield RadioButton("Off", id="eff-off", value=True)
-            yield RadioButton("Rainbow Chase", id="eff-rainbow")
-            yield RadioButton("Breathe", id="eff-breathe")
-        yield Label(self._DESCRIPTIONS["Off"], id="effect-desc", classes="desc")
-        yield Button("Apply Effect", id="apply-effect", variant="primary")
+        # Paint-mode banner — hidden by default, shown when paint engages.
+        yield Label("", id="paint-banner", classes="paint-banner")
+
+        yield Label("PAINT", classes="section-title")
+        yield Label(
+            "Click an LED to focus, then drag the RGB inputs or type a hex code. "
+            "Updates apply live.  Press 'Apply to all' to slap the picked color "
+            "on every LED at once.",
+            classes="desc",
+        )
+        with Horizontal(id="swatch-row"):
+            yield Static("LED 1\n\n", id="swatch-1", classes="led-swatch -selected")
+            yield Static("LED 2\n\n", id="swatch-2", classes="led-swatch")
+            yield Static("LED 3\n\n", id="swatch-3", classes="led-swatch")
+            yield Static("LED 4\n\n", id="swatch-4", classes="led-swatch")
+
+        with Vertical(id="color-controls"):
+            with Horizontal():
+                yield Label("R")
+                yield Input(value="0", id="rgb-r", type="integer", restrict=r"[0-9]*")
+                yield Label("G")
+                yield Input(value="0", id="rgb-g", type="integer", restrict=r"[0-9]*")
+                yield Label("B")
+                yield Input(value="0", id="rgb-b", type="integer", restrict=r"[0-9]*")
+            with Horizontal():
+                yield Label("Hex")
+                yield Input(value="#000000", id="hex-input")
+                yield Button("Apply to all LEDs", id="apply-all", variant="primary")
+                yield Button("All off", id="all-off")
 
         yield Rule()
-        with Vertical(id="flash-section"):
-            yield Label("BUTTON FLASH", classes="section-title")
+
+        with Vertical(id="scene-section"):
+            yield Label("BUILT-IN SCENES (firmware effect modes)", classes="section-title")
             yield Label(
-                "When enabled, the LED briefly flashes white when you press a button.",
+                "Animations that run on the badge itself, no host needed. "
+                "Selecting a scene auto-suspends bridges (Teams meeting excepted).",
                 classes="desc",
             )
-            yield Checkbox("Enable button flash", id="flash-toggle", value=True)
+            with RadioSet(id="effect-radio"):
+                yield RadioButton("Off", id="eff-0", value=True)
+                yield RadioButton("Rainbow Chase", id="eff-1")
+                yield RadioButton("Breathe", id="eff-2")
+                yield RadioButton("Wipe", id="eff-3")
+                yield RadioButton("Twinkle", id="eff-4")
+                yield RadioButton("Gradient", id="eff-5")
+                yield RadioButton("Theater", id="eff-6")
+                yield RadioButton("Cylon", id="eff-7")
+                yield RadioButton("Particles (2D physics)", id="eff-8")
+            yield Label(
+                "Static EEPROM colors — no animation.",
+                id="effect-desc", classes="desc",
+            )
+            yield Button("Apply Scene", id="apply-effect", variant="primary")
+
+        yield Rule()
+
+        yield Label("SAVED SCENES (TOML)", classes="section-title")
+        yield Label(
+            "Scenes saved under ~/.config/dc29/scenes/.  Build new ones from "
+            "the shell with `dc29 scene save` or write the TOML directly.",
+            classes="desc",
+        )
+        with Horizontal(classes="scene-row"):
+            yield Select(
+                [("(refresh to load)", "")],
+                id="scene-select",
+                allow_blank=False,
+                prompt="Pick a saved scene",
+            )
+            yield Button("Play", id="play-scene", variant="primary")
+            yield Button("Stop", id="stop-scene")
+            yield Button("Refresh", id="refresh-scenes")
+
+        yield Rule()
+
+        with Vertical(id="toggles-section"):
+            yield Label("TOGGLES", classes="section-title")
+            yield Checkbox("Splash on press (fidget toy: poke during a light show)", id="splash-toggle", value=True)
+            yield Checkbox("Button flash (long takeover on key send)", id="flash-toggle", value=True)
+            yield Checkbox("Sticky focus LEDs (keep last page colors on focus loss)", id="sticky-toggle", value=False)
+            with Horizontal(id="brightness-row"):
+                yield Label("Brightness:")
+                yield Input(value="100", id="brightness-input", type="integer", restrict=r"[0-9]*")
+                yield Label("% (0–100)", classes="desc")
+                yield Button("Apply", id="apply-brightness")
+
+    # ------------------------------------------------------------------
+    # Compose lifecycle
+    # ------------------------------------------------------------------
+
+    def on_mount(self) -> None:
+        self._refresh_scene_list()
+        self._render_swatches()
+
+    def _refresh_scene_list(self) -> None:
+        from dc29.scenes import list_scenes
+        try:
+            paths = list_scenes()
+        except Exception:
+            paths = []
+        sel = self.query_one("#scene-select", Select)
+        if not paths:
+            sel.set_options([("(no scenes saved)", "")])
+        else:
+            sel.set_options([(p.stem, str(p)) for p in paths])
+
+    # ------------------------------------------------------------------
+    # Swatch + RGB sync
+    # ------------------------------------------------------------------
+
+    def _render_swatches(self) -> None:
+        for n in (1, 2, 3, 4):
+            try:
+                sw = self.query_one(f"#swatch-{n}", Static)
+            except NoMatches:
+                continue
+            r, g, b = self._led_colors[n]
+            # Style the cell's background to its color.
+            sw.styles.background = Color(r, g, b)
+            # Pick a contrasting label color.
+            lum = 0.299 * r + 0.587 * g + 0.114 * b
+            sw.styles.color = "white" if lum < 128 else "black"
+            sel = " (selected)" if n == self._selected_led else ""
+            sw.update(f"LED {n}{sel}\n#{r:02X}{g:02X}{b:02X}")
+
+    def _sync_inputs_to_color(self, color: tuple[int, int, int]) -> None:
+        r, g, b = color
+        for sid, v in (("rgb-r", r), ("rgb-g", g), ("rgb-b", b)):
+            inp = self.query_one(f"#{sid}", Input)
+            with inp.prevent(Input.Changed, Input.Submitted):
+                inp.value = str(v)
+        hexin = self.query_one("#hex-input", Input)
+        with hexin.prevent(Input.Changed, Input.Submitted):
+            hexin.value = f"#{r:02X}{g:02X}{b:02X}"
+
+    @on(events.Click, ".led-swatch")
+    def _select_swatch(self, event: events.Click) -> None:
+        sid = (event.widget.id if event.widget else "") or ""
+        if not sid.startswith("swatch-"):
+            return
+        try:
+            n = int(sid.split("-")[1])
+        except ValueError:
+            return
+        # Update selected state visually
+        for k in (1, 2, 3, 4):
+            try:
+                w = self.query_one(f"#swatch-{k}", Static)
+                if k == n:
+                    w.add_class("-selected")
+                else:
+                    w.remove_class("-selected")
+            except NoMatches:
+                pass
+        self._selected_led = n
+        self._sync_inputs_to_color(self._led_colors[n])
+        self._render_swatches()
+
+    def _current_input_color(self) -> Optional[tuple[int, int, int]]:
+        try:
+            r = int(self.query_one("#rgb-r", Input).value or "0")
+            g = int(self.query_one("#rgb-g", Input).value or "0")
+            b = int(self.query_one("#rgb-b", Input).value or "0")
+        except ValueError:
+            return None
+        if not all(0 <= c <= 255 for c in (r, g, b)):
+            return None
+        return (r, g, b)
+
+    @on(Input.Changed, "#rgb-r,#rgb-g,#rgb-b")
+    def _rgb_changed(self, event: Input.Changed) -> None:
+        color = self._current_input_color()
+        if color is None:
+            return
+        # Sync hex display
+        hexin = self.query_one("#hex-input", Input)
+        with hexin.prevent(Input.Changed, Input.Submitted):
+            hexin.value = f"#{color[0]:02X}{color[1]:02X}{color[2]:02X}"
+        # Live paint
+        self._led_colors[self._selected_led] = color
+        self._render_swatches()
+        self.app.post_message(_PaintLEDMessage(self._selected_led, color))
+
+    @on(Input.Submitted, "#hex-input")
+    @on(Input.Changed, "#hex-input")
+    def _hex_changed(self, event) -> None:
+        val = self.query_one("#hex-input", Input).value.strip()
+        if not val.startswith("#") or len(val) != 7:
+            return
+        try:
+            r = int(val[1:3], 16); g = int(val[3:5], 16); b = int(val[5:7], 16)
+        except ValueError:
+            return
+        # Sync RGB inputs
+        for sid, v in (("rgb-r", r), ("rgb-g", g), ("rgb-b", b)):
+            inp = self.query_one(f"#{sid}", Input)
+            with inp.prevent(Input.Changed, Input.Submitted):
+                inp.value = str(v)
+        self._led_colors[self._selected_led] = (r, g, b)
+        self._render_swatches()
+        self.app.post_message(_PaintLEDMessage(self._selected_led, (r, g, b)))
+
+    @on(Button.Pressed, "#apply-all")
+    def _apply_all(self) -> None:
+        color = self._current_input_color()
+        if color is None:
+            return
+        for n in (1, 2, 3, 4):
+            self._led_colors[n] = color
+        self._render_swatches()
+        self.app.post_message(_PaintAllMessage(color, color, color, color))
+
+    @on(Button.Pressed, "#all-off")
+    def _all_off(self) -> None:
+        for n in (1, 2, 3, 4):
+            self._led_colors[n] = (0, 0, 0)
+        self._render_swatches()
+        self._sync_inputs_to_color((0, 0, 0))
+        self.app.post_message(_PaintAllMessage((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)))
+
+    # ------------------------------------------------------------------
+    # Scene controls
+    # ------------------------------------------------------------------
 
     @on(RadioSet.Changed, "#effect-radio")
     def _radio_changed(self, event: RadioSet.Changed) -> None:
-        label = str(event.pressed.label)
-        desc = self._DESCRIPTIONS.get(label, "")
+        from dc29.protocol import EFFECT_DESCRIPTIONS, EffectMode
+        idx = event.radio_set.pressed_index
+        desc = EFFECT_DESCRIPTIONS.get(idx, "")
         self.query_one("#effect-desc", Label).update(desc)
 
     @on(Button.Pressed, "#apply-effect")
-    def _apply(self) -> None:
+    def _apply_effect(self) -> None:
         radio = self.query_one("#effect-radio", RadioSet)
         idx = radio.pressed_index
         self.app.post_message(_ApplyEffectMessage(idx))
 
+    @on(Button.Pressed, "#play-scene")
+    def _play_scene(self) -> None:
+        sel = self.query_one("#scene-select", Select)
+        path = sel.value
+        if not path:
+            return
+        self.app.post_message(_PlaySceneMessage(path=str(path)))
+
+    @on(Button.Pressed, "#stop-scene")
+    def _stop_scene(self) -> None:
+        self.app.post_message(_StopSceneMessage())
+
+    @on(Button.Pressed, "#refresh-scenes")
+    def _refresh_scenes(self) -> None:
+        self._refresh_scene_list()
+
+    @on(Button.Pressed, "#apply-brightness")
+    def _apply_brightness(self) -> None:
+        try:
+            pct = int(self.query_one("#brightness-input", Input).value or "100")
+        except ValueError:
+            return
+        pct = max(0, min(100, pct))
+        self.app.post_message(_SetBrightnessMessage(pct / 100.0))
+
+    # ------------------------------------------------------------------
+    # Toggle handlers — dispatch the existing TUI messages
+    # ------------------------------------------------------------------
+
     @on(Checkbox.Changed, "#flash-toggle")
     def _flash_toggle(self, event: Checkbox.Changed) -> None:
         self.app.post_message(_SetFlashMessage(event.value))
+
+    @on(Checkbox.Changed, "#splash-toggle")
+    def _splash_toggle(self, event: Checkbox.Changed) -> None:
+        self.app.post_message(_SetSplashMessage(event.value))
+
+    @on(Checkbox.Changed, "#sticky-toggle")
+    def _sticky_toggle_eff(self, event: Checkbox.Changed) -> None:
+        self.app.post_message(_SetStickyMessage(event.value))
+
+    # ------------------------------------------------------------------
+    # External — called by BadgeTUI to keep TUI state in sync
+    # ------------------------------------------------------------------
+
+    def set_led_color(self, n: int, color: tuple[int, int, int]) -> None:
+        """Reflect a remote LED change (e.g. bridge update) into the swatches."""
+        if n in self._led_colors:
+            self._led_colors[n] = color
+            self._render_swatches()
+            if n == self._selected_led:
+                self._sync_inputs_to_color(color)
+
+    def set_effect_display(self, mode: int) -> None:
+        try:
+            radio = self.query_one("#effect-radio", RadioSet)
+            radio.pressed_index = max(0, min(7, mode))
+        except Exception:
+            pass
+
+    def set_paint_banner(self, *, active: bool, locked: bool = False, message: str = "") -> None:
+        """Show or hide the paint-mode banner.
+
+        Args:
+            active:  ``True`` to show.
+            locked:  ``True`` to render as the "locked by Teams meeting" variant
+                     (red accent instead of warning yellow).
+            message: Optional text to display in the banner.
+        """
+        try:
+            banner = self.query_one("#paint-banner", Label)
+        except NoMatches:
+            return
+        if active:
+            banner.add_class("-active")
+        else:
+            banner.remove_class("-active")
+        if locked:
+            banner.add_class("-locked")
+        else:
+            banner.remove_class("-locked")
+        banner.update(message)
+
+    def set_sticky_display(self, enabled: bool) -> None:
+        try:
+            cb = self.query_one("#sticky-toggle", Checkbox)
+            with cb.prevent(Checkbox.Changed):
+                cb.value = enabled
+        except Exception:
+            pass
+
+    def set_splash_display(self, enabled: bool) -> None:
+        try:
+            cb = self.query_one("#splash-toggle", Checkbox)
+            with cb.prevent(Checkbox.Changed):
+                cb.value = enabled
+        except Exception:
+            pass
+
+    @on(Checkbox.Changed, "#sticky-toggle")
+    def _sticky_toggle(self, event: Checkbox.Changed) -> None:
+        self.app.post_message(_SetStickyMessage(event.value))
+
+    def set_sticky_display(self, enabled: bool) -> None:
+        """Update the checkbox to reflect the current config value (no message dispatch)."""
+        try:
+            cb = self.query_one("#sticky-toggle", Checkbox)
+            with cb.prevent(Checkbox.Changed):
+                cb.value = enabled
+        except Exception:
+            pass
 
     def set_effect_display(self, mode: int) -> None:
         radio = self.query_one("#effect-radio", RadioSet)
@@ -1140,6 +1534,262 @@ class _SetFlashMessage(Message):
     def __init__(self, enabled: bool) -> None:
         super().__init__()
         self.enabled = enabled
+
+
+class _SetStickyMessage(Message):
+    def __init__(self, enabled: bool) -> None:
+        super().__init__()
+        self.enabled = enabled
+
+
+class _SetBridgeEnabledMessage(Message):
+    def __init__(self, name: str, enabled: bool) -> None:
+        super().__init__()
+        self.name = name
+        self.enabled = enabled
+
+
+class _SetSliderEnabledMessage(Message):
+    def __init__(self, enabled: bool) -> None:
+        super().__init__()
+        self.enabled = enabled
+
+
+class _SetSplashMessage(Message):
+    def __init__(self, enabled: bool) -> None:
+        super().__init__()
+        self.enabled = enabled
+
+
+class _PaintLEDMessage(Message):
+    """Paint a single LED — fired by RGB/hex input changes."""
+    def __init__(self, led: int, color: tuple[int, int, int]) -> None:
+        super().__init__()
+        self.led = led
+        self.color = color
+
+
+class _PaintAllMessage(Message):
+    """Paint all four LEDs atomically — fired by 'Apply to all' button."""
+    def __init__(
+        self,
+        c1: tuple[int, int, int],
+        c2: tuple[int, int, int],
+        c3: tuple[int, int, int],
+        c4: tuple[int, int, int],
+    ) -> None:
+        super().__init__()
+        self.colors = (c1, c2, c3, c4)
+
+
+class _PlaySceneMessage(Message):
+    """Play a saved scene from a file path."""
+    def __init__(self, path: str) -> None:
+        super().__init__()
+        self.path = path
+
+
+class _StopSceneMessage(Message):
+    """Stop the currently playing scene."""
+    pass
+
+
+class _SetBrightnessMessage(Message):
+    """Set the BadgeAPI brightness scalar (0.0..1.0)."""
+    def __init__(self, scale: float) -> None:
+        super().__init__()
+        self.scale = scale
+
+
+# ---------------------------------------------------------------------------
+# Bridges & Inputs Tab
+# ---------------------------------------------------------------------------
+
+
+class BridgesTab(Container):
+    """Tab 5: Per-bridge enable/disable list + hardware input toggles.
+
+    Bridges hot-reload via :class:`BridgeManager` when toggled.  Hardware
+    inputs (currently the capacitive touch slider) hot-reload via direct
+    firmware commands — no restart needed for either kind.
+    """
+
+    DEFAULT_CSS = """
+    BridgesTab {
+        padding: 1 2;
+    }
+    BridgesTab .section-title {
+        color: $accent;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    BridgesTab .desc {
+        color: $text-muted;
+        margin-bottom: 1;
+        padding-left: 2;
+    }
+    BridgesTab .restart-hint {
+        color: $warning;
+        text-style: italic;
+        margin-bottom: 1;
+        padding-left: 2;
+    }
+    BridgesTab .bridge-row {
+        height: auto;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        from dc29.bridges.manifest import BRIDGE_MANIFEST
+        from dc29.config import get_config
+
+        cfg = get_config()
+        enabled_bridges = cfg.enabled_bridges
+
+        yield Label("BRIDGES", classes="section-title")
+        yield Label(
+            "Each bridge is an integration with one app. Bridges are off by default — "
+            "enable only what you actually use to keep the focus poll budget small.",
+            classes="desc",
+        )
+        yield Label(
+            "⟳  Toggling here starts or stops the bridge live — no restart needed.",
+            classes="restart-hint",
+        )
+        yield Rule()
+        for spec in BRIDGE_MANIFEST:
+            with Vertical(classes="bridge-row"):
+                yield Checkbox(
+                    f"{spec.name}  —  {spec.description}",
+                    id=f"bridge-{spec.name}",
+                    value=spec.name in enabled_bridges,
+                )
+
+        yield Rule()
+        yield Label("HARDWARE INPUTS", classes="section-title")
+        yield Label(
+            "Firmware-level inputs.  Toggles here send a serial command to the "
+            "badge live; settings are RAM-only on the firmware side and reset "
+            "to the config default on every power cycle.",
+            classes="desc",
+        )
+        yield Checkbox(
+            "Capacitive touch slider — volume up / volume down",
+            id="input-slider",
+            value=cfg.slider_enabled,
+        )
+
+    @on(Checkbox.Changed)
+    def _toggle(self, event: Checkbox.Changed) -> None:
+        cb_id = event.checkbox.id or ""
+        if cb_id.startswith("bridge-"):
+            name = cb_id[len("bridge-"):]
+            self.app.post_message(_SetBridgeEnabledMessage(name, event.value))
+        elif cb_id == "input-slider":
+            self.app.post_message(_SetSliderEnabledMessage(event.value))
+
+    def refresh_from_config(self) -> None:
+        """Sync every checkbox to the current Config (used after CLI/env loads)."""
+        from dc29.bridges.manifest import BRIDGE_MANIFEST
+        from dc29.config import get_config
+
+        cfg = get_config()
+        enabled_bridges = cfg.enabled_bridges
+        for spec in BRIDGE_MANIFEST:
+            try:
+                cb = self.query_one(f"#bridge-{spec.name}", Checkbox)
+                with cb.prevent(Checkbox.Changed):
+                    cb.value = spec.name in enabled_bridges
+            except Exception:
+                pass
+        try:
+            cb = self.query_one("#input-slider", Checkbox)
+            with cb.prevent(Checkbox.Changed):
+                cb.value = cfg.slider_enabled
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Stats Tab
+# ---------------------------------------------------------------------------
+
+
+class StatsTab(Container):
+    """Tab 6: Local-only fun stats — emails deleted, mute toggles, button thumps, etc.
+
+    Reads :func:`dc29.stats.get_stats` and renders a friendly snapshot with a
+    refresh button (plus auto-refresh every 5 seconds while the tab is mounted).
+    A Reset button calls :meth:`_Stats.reset` after confirmation.
+    """
+
+    DEFAULT_CSS = """
+    StatsTab {
+        padding: 1 2;
+    }
+    StatsTab .section-title {
+        color: $accent;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    StatsTab .desc {
+        color: $text-muted;
+        margin-bottom: 1;
+        padding-left: 2;
+    }
+    StatsTab #stats-display {
+        height: auto;
+        padding: 1 2;
+        border: solid $panel-lighten-1;
+    }
+    StatsTab #stats-controls {
+        height: 3;
+        margin-top: 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield Label("LOCAL STATS", classes="section-title")
+        yield Label(
+            "Lifetime tally of nerd-fuel.  Stored at ~/.config/dc29/stats.toml. "
+            "Never sent anywhere. Auto-saves every 30 seconds while dc29 runs.",
+            classes="desc",
+        )
+        yield Static("(loading…)", id="stats-display")
+        with Horizontal(id="stats-controls"):
+            yield Button("Refresh", id="stats-refresh")
+            yield Button("Reset all", id="stats-reset", variant="error")
+
+    def on_mount(self) -> None:
+        self.refresh_display()
+        # Auto-refresh every 5 seconds.
+        self.set_interval(5.0, self.refresh_display)
+
+    def refresh_display(self) -> None:
+        from dc29.stats import render_summary
+        try:
+            self.query_one("#stats-display", Static).update(render_summary())
+        except NoMatches:
+            pass
+
+    @on(Button.Pressed, "#stats-refresh")
+    def _refresh(self) -> None:
+        self.refresh_display()
+
+    @on(Button.Pressed, "#stats-reset")
+    def _reset(self) -> None:
+        # Confirm with a small modal pattern — for now, single-click reset
+        # with the warning baked into the button styling.  Could promote to
+        # a real ConfirmModal later if folks delete-by-accident.
+        from dc29.stats import get_stats
+        get_stats().reset()
+        self.refresh_display()
+        self.app.post_message(_StatsResetMessage())
+
+
+class _StatsResetMessage(Message):
+    """Posted by StatsTab after a reset, so BadgeTUI can log it."""
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -1211,7 +1861,9 @@ class BadgeTUI(App):
         Binding("2", "switch_tab('keys')", "Keys", show=False),
         Binding("3", "switch_tab('leds')", "LEDs", show=False),
         Binding("4", "switch_tab('effects')", "Effects", show=False),
-        Binding("5", "switch_tab('log')", "Log", show=False),
+        Binding("5", "switch_tab('bridges')", "Bridges", show=False),
+        Binding("6", "switch_tab('stats')", "Stats", show=False),
+        Binding("7", "switch_tab('log')", "Log", show=False),
         Binding("r", "rainbow", "Rainbow", show=False),
         Binding("b", "breathe", "Breathe", show=False),
         Binding("o", "effect_off", "Effect Off", show=False),
@@ -1343,9 +1995,17 @@ class BadgeTUI(App):
         badge: BadgeAPI,
         *,
         pre_wire_loop: Optional[asyncio.AbstractEventLoop] = None,
+        bridge_manager=None,
     ) -> None:
         super().__init__()
         self._badge = badge
+        self._bridge_manager = bridge_manager
+        """Optional :class:`BridgeManager` for live hot-toggle of bridges.
+
+        Provided by ``dc29 start``; absent in ``dc29 ui`` mode.  When absent,
+        bridge toggles still update the live :class:`Config` but the user has
+        to restart for the change to take effect — surface that in the UI.
+        """
         self._callbacks_wired: bool = False
         self._flash_enabled: bool = True
         self._effect_mode: int = 0
@@ -1356,6 +2016,13 @@ class BadgeTUI(App):
             3: (0, 0, 0),
             4: (0, 0, 0),
         }
+        # Paint mode state — engaged when the user starts painting/picking
+        # scenes manually.  Saves the suspended state for restore.
+        self._paint_mode_active: bool = False
+        self._paint_saved_bridges: set = set()
+        self._paint_saved_effect: int = 0
+        # Currently-playing scene task, if any (set by _handle_play_scene).
+        self._active_scene_task = None
         # Pre-wire callbacks when a loop is provided (dc29 start mode).
         # This establishes the TUI as the base of the bridge button-hook chain
         # so that bridges installed later can call through to the TUI for logging.
@@ -1377,7 +2044,11 @@ class BadgeTUI(App):
                 yield LEDsTab()
             with TabPane("Effects [4]", id="effects"):
                 yield EffectsTab()
-            with TabPane("Log [5]", id="log"):
+            with TabPane("Bridges & Inputs [5]", id="bridges"):
+                yield BridgesTab()
+            with TabPane("Stats [6]", id="stats"):
+                yield StatsTab()
+            with TabPane("Log [7]", id="log"):
                 yield LogTab()
         yield Footer()
 
@@ -1394,6 +2065,12 @@ class BadgeTUI(App):
         if self._badge.connected:
             for i in range(1, 5):
                 self._badge.query_key(i)
+        # Sync the Sticky-LEDs checkbox to whatever was set by CLI flag or config file.
+        try:
+            from dc29.config import get_config
+            self.query_one(EffectsTab).set_sticky_display(get_config().sticky_focus_leds)
+        except Exception:
+            pass
 
     def _wire_badge_callbacks(
         self, loop: Optional[asyncio.AbstractEventLoop] = None
@@ -1549,18 +2226,8 @@ class BadgeTUI(App):
             f"rgb({event.r}, {event.g}, {event.b})"
         )
 
-    @on(_ApplyEffectMessage)
-    def _handle_apply_effect(self, event: _ApplyEffectMessage) -> None:
-        self._badge.set_effect_mode(event.mode)
-        self._effect_mode = event.mode
-        names = {0: "Off", 1: "Rainbow Chase", 2: "Breathe"}
-        self._log_event(
-            f"[magenta]◎ Effect set:[/] {names.get(event.mode, str(event.mode))}"
-        )
-        try:
-            self.query_one(DashboardTab).update_effect(event.mode)
-        except NoMatches:
-            pass
+    # _handle_apply_effect superseded by paint-aware version below.
+    # See the @on(_ApplyEffectMessage) handler under "Paint mode + scenes".
 
     @on(_SetFlashMessage)
     def _handle_set_flash(self, event: _SetFlashMessage) -> None:
@@ -1568,6 +2235,199 @@ class BadgeTUI(App):
         self._badge.set_button_flash(event.enabled)
         state = "on" if event.enabled else "off"
         self._log_event(f"[dim]◈ Button flash:[/] {state}")
+
+    @on(_SetStickyMessage)
+    def _handle_set_sticky(self, event: _SetStickyMessage) -> None:
+        from dc29.config import get_config
+        get_config().sticky_focus_leds = event.enabled
+        state = "on (LEDs persist after focus loss)" if event.enabled else "off (LEDs clear on focus loss)"
+        self._log_event(f"[dim]◈ Sticky focus LEDs:[/] {state}")
+
+    @on(_SetSliderEnabledMessage)
+    def _handle_set_slider(self, event: _SetSliderEnabledMessage) -> None:
+        from dc29.config import get_config
+        get_config().slider_enabled = event.enabled
+        self._badge.set_slider_enabled(event.enabled)
+        state = "enabled (volume keys live)" if event.enabled else "disabled (no volume injection)"
+        self._log_event(f"[dim]◈ Slider:[/] {state}")
+
+    @on(_SetBridgeEnabledMessage)
+    def _handle_set_bridge_enabled(self, event: _SetBridgeEnabledMessage) -> None:
+        from dc29.config import get_config
+        get_config().set_bridge_enabled(event.name, event.enabled)
+        verb = "enabled" if event.enabled else "disabled"
+        if self._bridge_manager is not None:
+            started, stopped = self._bridge_manager.reconcile()
+            if event.name in started:
+                hint = "[dim](running now)[/]"
+            elif event.name in stopped:
+                hint = "[dim](stopped)[/]"
+            else:
+                hint = ""
+        else:
+            hint = "[dim](takes effect on next start — no bridge manager attached)[/]"
+        self._log_event(
+            f"[dim]◈ Bridge[/] [bold]{event.name}[/] {verb} {hint}".rstrip()
+        )
+
+    # ------------------------------------------------------------------
+    # Paint mode + scenes — auto-grab control with Teams safety carve-out
+    # ------------------------------------------------------------------
+
+    def _engage_paint_mode(self) -> bool:
+        """Suspend bridges + effect mode so manual paint owns the LEDs.
+
+        Idempotent.  Returns ``True`` if paint mode is now (or already) live;
+        ``False`` if blocked by a Teams meeting (the only hard exception).
+        """
+        from dc29.config import get_config
+        from dc29.protocol import MuteState
+
+        # Hard carve-out: never wrest LED4 from Teams during an active meeting.
+        # The mute indicator is safety-critical — a clobbered LED4 could make
+        # the user think they're muted when they aren't (or vice versa).
+        if self._badge.state.mute_state != MuteState.NOT_IN_MEETING:
+            try:
+                eff = self.query_one(EffectsTab)
+                eff.set_paint_banner(
+                    active=True, locked=True,
+                    message="🔒 Paint mode locked — Teams meeting active.  "
+                            "Mute indicator owns LED 4 until the call ends.",
+                )
+            except Exception:
+                pass
+            return False
+
+        if self._paint_mode_active:
+            return True
+
+        cfg = get_config()
+        # Snapshot current state for restore.
+        self._paint_saved_bridges = set(cfg.enabled_bridges)
+        self._paint_saved_effect = self._badge.state.effect_mode
+        self._paint_mode_active = True
+
+        # Stop all bridges (silently — they can be restored).
+        if self._bridge_manager is not None and cfg.enabled_bridges:
+            cfg.enabled_bridges = set()
+            self._bridge_manager.reconcile()
+
+        # Suspend effect mode.
+        if self._paint_saved_effect != 0:
+            self._badge.set_effect_mode(0)
+
+        try:
+            eff = self.query_one(EffectsTab)
+            eff.set_paint_banner(
+                active=True, locked=False,
+                message="🎨 Paint mode active — bridges + effect paused.  Click [Restore] in the log when done.",
+            )
+        except Exception:
+            pass
+        self._log_event(
+            "[dim]◈ Paint mode engaged[/] — "
+            f"{len(self._paint_saved_bridges)} bridge(s) suspended, "
+            f"effect mode {self._paint_saved_effect} saved."
+        )
+        return True
+
+    def _restore_from_paint_mode(self) -> None:
+        if not self._paint_mode_active:
+            return
+        from dc29.config import get_config
+
+        cfg = get_config()
+        cfg.enabled_bridges = self._paint_saved_bridges
+        if self._bridge_manager is not None:
+            self._bridge_manager.reconcile()
+        if self._paint_saved_effect != 0:
+            self._badge.set_effect_mode(self._paint_saved_effect)
+
+        self._paint_mode_active = False
+        self._paint_saved_bridges = set()
+        self._paint_saved_effect = 0
+
+        try:
+            eff = self.query_one(EffectsTab)
+            eff.set_paint_banner(active=False)
+        except Exception:
+            pass
+        self._log_event("[dim]◈ Paint mode released[/] — bridges + effect restored.")
+
+    @on(_PaintLEDMessage)
+    def _handle_paint_led(self, event: _PaintLEDMessage) -> None:
+        if not self._engage_paint_mode():
+            return
+        self._badge.set_led(event.led, *event.color)
+
+    @on(_PaintAllMessage)
+    def _handle_paint_all(self, event: _PaintAllMessage) -> None:
+        if not self._engage_paint_mode():
+            return
+        self._badge.set_all_leds(*event.colors)
+
+    @on(_ApplyEffectMessage)
+    def _handle_apply_effect(self, event: _ApplyEffectMessage) -> None:
+        from dc29.protocol import EFFECT_NAMES
+        if event.mode != 0:
+            # Picking a built-in effect implicitly engages paint mode (the
+            # user is taking the badge out of normal-app context).
+            self._engage_paint_mode()
+        self._badge.set_effect_mode(event.mode)
+        self._effect_mode = event.mode
+        name = EFFECT_NAMES.get(event.mode, str(event.mode))
+        self._log_event(f"[magenta]◎ Effect set:[/] {name}")
+        try:
+            self.query_one(DashboardTab).update_effect(event.mode)
+        except NoMatches:
+            pass
+
+    @on(_PlaySceneMessage)
+    def _handle_play_scene(self, event: _PlaySceneMessage) -> None:
+        import asyncio
+        from pathlib import Path
+        from dc29.scenes import load_scene, SceneRunner
+        if not self._engage_paint_mode():
+            return
+        try:
+            scene = load_scene(Path(event.path))
+        except Exception as exc:
+            self._log_event(f"[red]Scene load failed:[/] {exc}")
+            return
+        # Cancel any previous scene task.
+        if self._active_scene_task is not None and not self._active_scene_task.done():
+            self._active_scene_task.cancel()
+        runner = SceneRunner(self._badge, scene)
+        self._active_scene_task = asyncio.create_task(runner.run(), name=f"scene:{scene.name}")
+        self._log_event(f"[dim]▶ Playing scene[/] [bold]{scene.name}[/] ({scene.kind()})")
+
+    @on(_StopSceneMessage)
+    def _handle_stop_scene(self, event: _StopSceneMessage) -> None:
+        if self._active_scene_task is not None and not self._active_scene_task.done():
+            self._active_scene_task.cancel()
+            self._active_scene_task = None
+            self._log_event("[dim]■ Scene stopped[/]")
+        # Also turn off any firmware effect.
+        self._badge.set_effect_mode(0)
+
+    @on(_SetBrightnessMessage)
+    def _handle_set_brightness(self, event: _SetBrightnessMessage) -> None:
+        # BadgeAPI keeps brightness as a public attribute; setting it scales
+        # all subsequent set_led / set_all_leds emissions.
+        self._badge.brightness = event.scale
+        self._log_event(f"[dim]◈ Brightness →[/] {int(event.scale * 100)}%")
+
+    @on(_StatsResetMessage)
+    def _handle_stats_reset(self, event: _StatsResetMessage) -> None:
+        self._log_event("[dim]◈ Stats reset[/] — fresh start.")
+
+    @on(_SetSplashMessage)
+    def _handle_set_splash(self, event: _SetSplashMessage) -> None:
+        from dc29.config import get_config
+        get_config().splash_on_press = event.enabled
+        self._badge.set_splash_on_press(event.enabled)
+        state = "on" if event.enabled else "off"
+        self._log_event(f"[dim]◈ Splash on press:[/] {state}")
 
     @on(EditKeyModal.Saved)
     def _handle_key_saved(self, event: EditKeyModal.Saved) -> None:

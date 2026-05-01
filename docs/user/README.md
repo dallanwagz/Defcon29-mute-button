@@ -45,9 +45,9 @@ The LEDs follow consistent color families across every app:
 
 | Button | Color | Semantic |
 |--------|-------|----------|
-| B1 | Warm red | Destructive / delete / exit |
+| B1 | Green | Create / confirm / go |
 | B2 | Cool blue | Status / communicate / reply |
 | B3 | Amber | Navigate / find / reach out |
-| B4 | Green | Create / confirm / go |
+| B4 | Warm red | Destructive / delete / exit |
 
-**Exception:** During a Teams meeting, B4 shows your actual mute state — red when muted, green when live — overriding the normal green.
+**Mute indicator (Teams + Slack):** During a Teams meeting or Slack huddle, B4 shows your actual mute state — red when muted, green when live — naturally aligned with the positional red slot.

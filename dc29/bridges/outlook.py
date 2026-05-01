@@ -1,9 +1,10 @@
 """
 dc29.bridges.outlook — Microsoft Outlook shortcut bridge.
 
-Activates a page of 4 Outlook shortcuts when Outlook has focus.  Button 1
-is the **delete** key — mapped to a bright red LED with a satisfying
-breathe-pulse animation on LEDs 2–4 after each press.
+Activates a page of 4 Outlook shortcuts when Outlook has focus.  Button 4
+(bottom-right, positional red) is the **delete** key — mapped to a bright
+red LED with a satisfying breathe-pulse animation on LEDs 1–3 after each
+press.
 
 Default button layout
 ---------------------
@@ -15,9 +16,9 @@ Default button layout
      - Shortcut (mac / win)
      - LED color
    * - 1
-     - **Delete email**
-     - Cmd+Backspace / Delete
-     - **red** (always on)
+     - Forward
+     - Cmd+J / Ctrl+F
+     - green
    * - 2
      - Reply
      - Cmd+R / Ctrl+R
@@ -25,15 +26,15 @@ Default button layout
    * - 3
      - Reply All
      - Cmd+Shift+R / Ctrl+Shift+R
-     - yellow
+     - amber
    * - 4
-     - Forward
-     - Cmd+J / Ctrl+F
-     - purple
+     - **Delete email**
+     - Cmd+Backspace / Delete
+     - **red** (always on)
 
 Delete pulse animation
 ----------------------
-After pressing Delete, LEDs 2–4 pulse with the delete color (red by
+After pressing Delete, LEDs 1–3 pulse with the delete color (red by
 default, configurable) in two smooth breathe cycles, then restore the
 page LED state.  The animation is fully configurable:
 
@@ -101,20 +102,20 @@ _SHORTCUTS_WIN: dict[str, tuple[list[str], object]] = {
 }
 
 _DEFAULT_BUTTON_ACTIONS: dict[int, str] = {
-    1: "delete",
+    1: "forward",
     2: "reply",
     3: "reply-all",
-    4: "forward",
+    4: "delete",
 }
 
 _DEFAULT_LED_COLORS: dict[str, tuple[int, int, int]] = {
-    # Default layout: B1=delete, B2=reply, B3=reply-all, B4=forward
-    # Positional semantics land almost perfectly here.
+    # Default layout: B1=forward, B2=reply, B3=reply-all, B4=delete
+    # Positional semantics: red on bottom-right is "destructive" — perfect fit.
     "delete":    (220, 0, 0),         # pure red  — destructive ✓
     "reply":     POSITION_ACTIVE[2],  # cool blue — direct communication ✓
     "reply-all": POSITION_ACTIVE[3],  # amber     — reach everyone ✓
-    "forward":   POSITION_ACTIVE[4],  # green     — send forward / create new thread ✓
-    "archive":   POSITION_ACTIVE[4],  # green     — positive triage action
+    "forward":   POSITION_ACTIVE[1],  # green     — send forward / create new thread ✓
+    "archive":   POSITION_ACTIVE[1],  # green     — positive triage action
     "flag":      POSITION_ACTIVE[3],  # amber     — mark / find later
 }
 
@@ -189,9 +190,15 @@ class OutlookBridge(FocusBridge):
         if not action:
             return
         log.info("Outlook: button %d → %s", btn, action)
+        if action == "delete":
+            # Firmware ripple is the visual feedback for delete (replaces the
+            # earlier python-side breathe-pulse, which would race the takeover
+            # for LED writes). Tink jingle stays as audio feedback.
+            self._badge.fire_takeover(btn)
+            from dc29.stats import record
+            record.email_deleted()
         self._inject(action)
         if action == "delete":
-            self._start_delete_pulse()
             asyncio.create_task(self._play_delete_sound(), name="outlook-delete-sound")
 
     # ------------------------------------------------------------------
@@ -227,7 +234,7 @@ class OutlookBridge(FocusBridge):
             log.debug("Delete sound failed: %s", exc)
 
     async def _delete_pulse(self) -> None:
-        """Breathe-pulse LEDs 2–4 with the pulse color, then restore page LEDs."""
+        """Breathe-pulse LEDs 1–3 with the pulse color, then restore page LEDs."""
         r, g, b = self._pulse_color
         steps = self._pulse_steps
         step_s = self._pulse_step_ms / 1000.0
@@ -237,21 +244,21 @@ class OutlookBridge(FocusBridge):
                 # Fade up
                 for i in range(1, steps + 1):
                     v = i / steps
-                    for led in (2, 3, 4):
+                    for led in (1, 2, 3):
                         self._badge.set_led(led, int(r * v), int(g * v), int(b * v))
                     await asyncio.sleep(step_s)
                 # Fade down
                 for i in range(steps - 1, -1, -1):
                     v = i / steps
-                    for led in (2, 3, 4):
+                    for led in (1, 2, 3):
                         self._badge.set_led(led, int(r * v), int(g * v), int(b * v))
                     await asyncio.sleep(step_s)
         except asyncio.CancelledError:
             pass
         finally:
-            # Restore the page LED state (button 1 stays red; 2–4 restore)
+            # Restore the page LED state (button 4 stays red; 1–3 restore)
             for btn, action in self._button_actions.items():
-                if btn in (2, 3, 4):
+                if btn in (1, 2, 3):
                     led = self._led_colors.get(action, (0, 0, 0))
                     self._badge.set_led(btn, *led)
 

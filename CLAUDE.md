@@ -28,6 +28,10 @@ uf2conv.py DC29.hex --convert --output DC29.uf2
 
 ## Flashing Firmware
 
+**Recommended workflow** (macOS): use the project slash command **`/flash-badge`** — it runs `make`, polls for the bootloader drive, copies the `.uf2`, and verifies CDC re-enumeration. Flags: `--no-build` (skip make) and `--rebuild` (force clean build). Source: `.claude/commands/flash-badge.md`.
+
+**Manual fallback** (any OS):
+
 1. Hold the **bottom-right button (BUTTON4)**.
 2. Plug in USB — badge enters bootloader, top-left LED blinks red, badge appears as a mass storage device.
 3. **Release the button immediately** once the drive mounts. Holding it across the reboot traps the badge in DFU indefinitely (looks identical to a firmware crash).
@@ -35,6 +39,8 @@ uf2conv.py DC29.hex --convert --output DC29.uf2
 5. Drive disappears → badge rebooted. Confirm a CDC serial port appears (`/dev/tty.usbmodem*` on Mac, `COMx` on Windows).
 
 Flashing does not reset EEPROM (challenge/game data survives). Only explicitly calling `reset_eeprom()` or changing `FIRMWARE_VERSION` in `main.h` resets it.
+
+**macOS toolchain note:** `arm-none-eabi-gcc` is at `~/opt/arm-gnu-toolchain/Payload/bin/` (extracted via `pkgutil --expand-full` from the Homebrew cask). The project Makefile at `Firmware/Source/DC29/Makefile` produces a working `.uf2` with `__SAMD21G16B__` define, `samd21g16b_flash.ld` linker script, `-fcommon` (GCC 10+ default change), and `-flto` (to fit in 56 KB on GCC 15). See `BUILD_MACOS.md` for the full setup.
 
 ## Firmware Architecture
 
@@ -56,12 +62,17 @@ On button press, if `button_flash_enabled`, `send_keys` calls `takeover_start(ke
 ### Serial console (`src/serialconsole.c`)
 Drives a text menu over USB CDC for configuring LED colors, keymaps, and viewing badge stats. Menu state machine lives in `serialConsoleState`.
 
-**Status indicator side-channel** (Teams integration): byte `0x01` is the escape prefix. The next byte drives LED 4:
-- `0x01 'M'` → red (muted)
-- `0x01 'U'` → green (unmuted)
-- `0x01 'X'` → off (not in meeting)
+**Status indicator side-channel** (Teams integration + general LED control): byte `0x01` is the escape prefix. Common commands:
+- `0x01 'M' / 'U' / 'X'` — LED 4 red/green/off (Teams mute state)
+- `0x01 'L' n r g b` — set LED n (1-4) to (r,g,b)
+- `0x01 'P' r1 g1 b1 r2 g2 b2 r3 g3 b3 r4 g4 b4` — atomic 4-LED paint (preferred for animation streams)
+- `0x01 'E' n` — set firmware effect mode (0=off, 1=rainbow-chase, 2=breathe, 3=wipe, 4=twinkle, 5=gradient, 6=theater, 7=cylon)
+- `0x01 'I' 0/1` — disable/enable interactive splash on press (RAM-only, default on)
+- `0x01 'S' 0/1` — disable/enable capacitive touch slider (RAM-only, default on)
+- `0x01 'F' 0/1` — disable/enable button-press takeover animation (RAM-only, default on)
+- `0x01 'T' n` — fire takeover ripple for button n (1-4) on demand
 
-`0x01` never appears in normal menu traffic, so this is safe to inject while the console is open.
+`0x01` never appears in normal menu traffic, so this channel is safe to inject while the console is open. See `dc29/protocol.py` for the full command + event list.
 
 ### LED / PWM (`src/pwm.c`)
 `led_set_resting_color(n, rgb[3])` sets a persistent "resting" color for an LED — it writes a shadow value and only drives hardware immediately when no takeover animation is running. Use this instead of `led_set_color` for any state you want to survive the animation.
@@ -109,5 +120,36 @@ dc29 autostart install    # Install launchd agent for login autostart
 **EEPROM double-injection:** If a button fires both a pynput shortcut AND a firmware HID keymap simultaneously, run `dc29 clear-keys` to zero all EEPROM entries. Use `dc29 diagnose` to check keymap state.
 
 **FocusBridge scaling:** All focus-detecting bridges share a single osascript call via a TTL cache (`_get_active_app()` in `bridges/focus.py`). Without this, 15+ concurrent calls flood macOS System Events and all time out. Do not revert this cache.
+
+## Audio-reactive bridge setup
+
+The `audio-reactive` bridge captures system audio via [BlackHole](https://github.com/ExistentialAudio/BlackHole) (free MIT-licensed virtual loopback driver), runs FFT + beat detection in Python, and drives the badge LEDs at 60 fps. One-time setup on macOS:
+
+1. **Install BlackHole + Python audio extras**
+   ```bash
+   brew install blackhole-2ch
+   pip install -e '.[audio]'    # adds sounddevice + numpy
+   ```
+
+2. **Create a Multi-Output Device in Audio MIDI Setup** (`/System/Applications/Utilities/Audio MIDI Setup.app`)
+   - Click the `+` in the lower-left → "Create Multi-Output Device"
+   - Check **both** your speaker/AirPods *and* "BlackHole 2ch"
+   - Right-click the new device → "Use This Device for Sound Output"
+
+3. **Verify**
+   ```bash
+   dc29 audio status     # should show ⭐ next to BlackHole 2ch
+   dc29 audio test       # play music, watch live RMS / band / beat bars
+   ```
+
+4. **Enable the bridge**
+   ```bash
+   dc29 start --enable audio-reactive
+   # or via TUI: tab 5 → check "audio-reactive"
+   ```
+
+**Optional Spotify palette context:** if `[spotify] client_id` is configured and `dc29 spotify auth` was run, the bridge polls currently-playing every 10s and shifts the LED palette per artist (stable hash → consistent hue family). Live audio drives reactivity; Spotify drives mood.
+
+**Why this replaced the original Spotify-analysis bridge:** Spotify deprecated `/audio-analysis` and `/audio-features` for new dev apps on 2024-11-27. Live FFT achieves the same goal with no third-party deprecation risk and works with any audio source (Spotify, YouTube, Apple Music, anything that produces audio output).
 
 See `tools/TEAMS_MUTE_SETUP.md` for full Teams setup walkthrough.

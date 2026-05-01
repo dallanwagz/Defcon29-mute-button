@@ -14,16 +14,16 @@ Teams page (default button layout)
      - LED (idle / in-meeting)
    * - 1
      - Leave call
-     - dark / red
+     - dark / red (leave-call is destructive — overrides positional green)
    * - 2
      - Toggle video
      - dark / blue or dark
    * - 3
      - Raise hand
-     - dark / yellow or dark
+     - dark / amber or dark
    * - 4
      - Toggle mute
-     - dark / red (muted) or green (live)
+     - dark / red (muted) or green (live) — positional red, mute state aligns naturally
 
 The layout is fully configurable via ``~/.config/dc29/config.toml``::
 
@@ -109,12 +109,12 @@ _TEAMS_ACTIONS: dict[str, str] = {
 }
 
 # LED colors per action — positional semantics applied.
-# toggle-mute (B4) is overridden dynamically based on mute state.
+# toggle-mute (B4, positional red) is overridden dynamically based on mute state.
 _ACTION_LEDS: dict[str, tuple[int, int, int]] = {
-    "leave-call":             POSITION_ACTIVE[1],  # warm red — destructive/exit ✓
+    "leave-call":             POSITION_ACTIVE[4],  # warm red — destructive/exit ✓
     "toggle-video":           POSITION_ACTIVE[2],  # cool blue — visibility/status ✓
     "toggle-hand":            POSITION_ACTIVE[3],  # amber — raise hand / reach out ✓
-    "toggle-mute":            POSITION_ACTIVE[4],  # green baseline; overridden per state
+    "toggle-mute":            POSITION_ACTIVE[1],  # green baseline; overridden per state
     "toggle-background-blur": POSITION_ACTIVE[2],  # blue — visual status family
 }
 
@@ -127,8 +127,8 @@ def _build_page(button_actions: dict[int, str]) -> BridgePage:
         buttons[btn] = PageButton(
             label=action,
             led=led,
-            led_active=POSITION_ACTIVE[4],   # green = on / live / active
-            led_inactive=POSITION_ACTIVE[1],  # warm red = muted / off / inactive
+            led_active=POSITION_ACTIVE[1],   # green = on / live / active
+            led_inactive=POSITION_ACTIVE[4],  # warm red = muted / off / inactive
         )
     return BridgePage(
         name="teams",
@@ -174,6 +174,13 @@ class TeamsBridge(BaseBridge):
         self._next_request_id: int = 100
         self._action_queue: asyncio.Queue[str] = asyncio.Queue()
         self._hotkey_listener: object = None
+
+        # Saved firmware effect mode while we own LED4 for the mute indicator.
+        # Now that effects animate all 4 LEDs, an active effect would clobber
+        # the mute state on every tick — so suspend it on meeting-start and
+        # restore it on meeting-end (mirrors FocusBridge's focus-gain/loss
+        # handoff).
+        self._saved_effect: int = 0
 
         self._page = _build_page(self._button_actions)
 
@@ -313,6 +320,10 @@ class TeamsBridge(BaseBridge):
             self._next_request_id += 1
             await ws.send(json.dumps({"requestId": rid, "action": ws_action}))
             log.info("Sent %s to Teams (requestId=%d)", ws_action, rid)
+            # Stats: count user-initiated mute toggles for the lifetime tally.
+            if action == "toggle-mute":
+                from dc29.stats import record
+                record.mute_toggle()
 
     def _set_meeting_state(self, new_state: MuteState) -> None:
         """Update local state, drive badge LEDs, and fire callbacks."""
@@ -323,10 +334,22 @@ class TeamsBridge(BaseBridge):
 
         # Suppress the button-press takeover animation during meetings so LED 4
         # always shows accurate mute state instead of a 2.5 s light show.
+        # Also suspend any running firmware effect (rainbow/breathe) — those
+        # now animate all 4 LEDs and would clobber the mute indicator every
+        # tick.  Save the prior mode so we can restore it when the meeting ends.
         if not was_in_meeting and now_in_meeting:
             self._badge.set_button_flash(False)
+            self._saved_effect = self._badge.state.effect_mode
+            if self._saved_effect != 0:
+                self._badge.set_effect_mode(0)
+            # Stats: count the meeting + add to the unique set if we have an id.
+            from dc29.stats import record
+            record.teams_meeting_joined(meeting_id=getattr(self, "_current_meeting_id", None))
         elif was_in_meeting and not now_in_meeting:
             self._badge.set_button_flash(True)
+            if self._saved_effect != 0:
+                self._badge.set_effect_mode(self._saved_effect)
+                self._saved_effect = 0
 
         if new_state == MuteState.NOT_IN_MEETING:
             # Only touch LEDs when leaving a meeting — don't clobber other bridges
@@ -338,11 +361,11 @@ class TeamsBridge(BaseBridge):
             # Light up all page buttons with their action colors
             for btn, action in self._button_actions.items():
                 if action == "toggle-mute":
-                    # Safety-critical exception to positional rule: state IS the semantics.
+                    # Mute on B4 (positional red); state IS the semantics.
                     if new_state == MuteState.MUTED:
-                        self._badge.set_led(btn, *POSITION_ACTIVE[1])  # warm red = muted
+                        self._badge.set_led(btn, *POSITION_ACTIVE[4])  # warm red = muted
                     else:
-                        self._badge.set_led(btn, *POSITION_ACTIVE[4])  # green = live
+                        self._badge.set_led(btn, *POSITION_ACTIVE[1])  # green = live
                 elif action == "toggle-video":
                     if self._video_on:
                         self._badge.set_led(btn, *POSITION_ACTIVE[2])  # blue = on
@@ -354,7 +377,7 @@ class TeamsBridge(BaseBridge):
                     else:
                         self._badge.set_led(btn, *POSITION_DIM[3])     # dim amber = lowered
                 elif action == "leave-call":
-                    self._badge.set_led(btn, *POSITION_ACTIVE[1])      # always warm red
+                    self._badge.set_led(btn, *POSITION_ACTIVE[4])      # always warm red
                 else:
                     positional_default = POSITION_ACTIVE.get(btn, (60, 60, 60))
                     led = _ACTION_LEDS.get(action, positional_default)

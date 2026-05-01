@@ -106,7 +106,7 @@ The focus poll runs every 500 ms. This is intentional to avoid overwhelming macO
 
 ## macOS-specific
 
-**Outlook B1 opened Exposé / Mission Control instead of deleting email**
+**Outlook B4 opened Exposé / Mission Control instead of deleting email**
 
 The EEPROM had a conflicting keymap. Run `dc29 clear-keys` to fix. The Outlook bridge uses `Cmd+Backspace` (move to trash) — if you see anything else, the firmware keymap is interfering.
 

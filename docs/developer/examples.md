@@ -207,7 +207,7 @@ asyncio.run(main())
 #!/usr/bin/env python3
 """
 CPU usage indicator: green = low, yellow = medium, red = high.
-LEDs 1-3 show CPU usage per core. LED 4 reserved.
+All 4 LEDs available — uses LEDs 1–4 to show four cores' utilisation.
 Requires: pip install psutil
 """
 import asyncio

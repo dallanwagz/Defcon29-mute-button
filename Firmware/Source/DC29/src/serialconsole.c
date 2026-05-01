@@ -18,8 +18,12 @@ extern bool main_b_cdc_enable;
      0x01 K n m k    -> set button n (1-6) to single key: modifier m, keycode k
      0x01 Q n        -> query button n; badge replies 0x01 R n m k
      0x01 L n r g b  -> set LED n (1-4) color immediately (not saved to EEPROM)
-     0x01 F 0/1      -> disable/enable button press white flash (RAM only, default on)
-     0x01 E n        -> set LED effect mode (0=off, 1=rainbow-chase, 2=breathe)
+     0x01 P r1 g1 b1 r2 g2 b2 r3 g3 b3 r4 g4 b4 -> paint all 4 LEDs atomically (12 bytes)
+     0x01 F 0/1      -> disable/enable button press takeover animation (RAM only, default on)
+     0x01 E n        -> set LED effect mode (0=off, 1=rainbow, 2=breathe, 3=wipe, 4=twinkle, 5=gradient, 6=theater, 7=cylon)
+     0x01 T n        -> trigger takeover ripple animation for button n (1-4) on demand
+     0x01 S 0/1      -> disable/enable capacitive touch slider (volume up/down) (RAM only, default on)
+     0x01 I 0/1      -> disable/enable interactive splash on button press (RAM only, default on)
    Commands from badge to host:
      0x01 B n m k    -> button n was pressed; first keymap entry is modifier m, keycode k
      0x01 R n m k    -> reply to Q query
@@ -30,7 +34,7 @@ extern bool main_b_cdc_enable;
 #define STATUS_ESCAPE 0x01
 static uint8_t escape_state = 0;  /* 0=idle 1=awaiting_cmd 2=collecting_args */
 static uint8_t escape_cmd = 0;
-static uint8_t escape_args[4];    /* max 4 args (L command: n r g b) */
+static uint8_t escape_args[12];   /* max 12 args (P command: r1 g1 b1 r2 g2 b2 r3 g3 b3 r4 g4 b4) */
 static uint8_t escape_args_count = 0;
 static uint8_t escape_args_needed = 0;
 
@@ -38,6 +42,8 @@ extern uint8_t keymaplength;
 extern uint8_t keymap[];
 extern uint8_t keymapstarts[];
 extern bool button_flash_enabled;
+extern bool slider_enabled;
+extern bool splash_on_press_enabled;
 extern uint8_t effect_mode;
 
 static uint8_t newKeystroke[230];
@@ -115,8 +121,12 @@ void updateSerialConsole(void){
 				if(data == 'K'){ escape_args_needed = 3; escape_state = 2; return; }
 				if(data == 'Q'){ escape_args_needed = 1; escape_state = 2; return; }
 				if(data == 'L'){ escape_args_needed = 4; escape_state = 2; return; }
+				if(data == 'P'){ escape_args_needed = 12; escape_state = 2; return; }
 				if(data == 'F'){ escape_args_needed = 1; escape_state = 2; return; }
 				if(data == 'E'){ escape_args_needed = 1; escape_state = 2; return; }
+				if(data == 'T'){ escape_args_needed = 1; escape_state = 2; return; }
+				if(data == 'S'){ escape_args_needed = 1; escape_state = 2; return; }
+				if(data == 'I'){ escape_args_needed = 1; escape_state = 2; return; }
 				return;
 			}
 			if(escape_state == 2){
@@ -139,10 +149,30 @@ void updateSerialConsole(void){
 						uint8_t color[3] = {escape_args[1], escape_args[2], escape_args[3]};
 						led_set_resting_color(n, color);
 					}
+				} else if(escape_cmd == 'P'){
+					/* Atomic 4-LED paint.  All four shadow values + hardware writes
+					 * happen in this loop iteration, so animation frames don't tear. */
+					for(uint8_t i = 0; i < 4; i++){
+						uint8_t color[3] = {
+							escape_args[i*3 + 0],
+							escape_args[i*3 + 1],
+							escape_args[i*3 + 2],
+						};
+						led_set_resting_color(i + 1, color);
+					}
 				} else if(escape_cmd == 'F'){
 					button_flash_enabled = (escape_args[0] != 0);
 				} else if(escape_cmd == 'E'){
 					set_effect_mode(escape_args[0] % NUM_EFFECT_MODES);
+				} else if(escape_cmd == 'T'){
+					uint8_t btn = escape_args[0];
+					if(btn >= 1 && btn <= 4){
+						takeover_start((uint8_t)(btn - 1));
+					}
+				} else if(escape_cmd == 'S'){
+					slider_enabled = (escape_args[0] != 0);
+				} else if(escape_cmd == 'I'){
+					splash_on_press_enabled = (escape_args[0] != 0);
 				}
 				return;
 			}

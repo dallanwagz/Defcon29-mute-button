@@ -533,3 +533,125 @@ bool takeover_tick(void){
 	}
 	return true;
 }
+
+
+/* ─── Splash animation — interactive fidget-toy "color spray" ────────────
+ *
+ * Triggered by a button press while an effect mode is running.  Captures
+ * the pressed LED's current displayed color (from ledvalues[]), then
+ * renders a short ~300 ms three-phase animation:
+ *
+ * Phase 1 FREEZE   ( 0– 60 ms): pressed LED brightens to 100% of captured;
+ *                                neighbors stay on whatever they were.
+ * Phase 2 SPRAY   (60–180 ms): captured color paints outward — adjacent
+ *                                LEDs at 90%, opposite LED at 50%.  Source
+ *                                holds at 100%.
+ * Phase 3 SETTLE (180–300 ms): all LEDs cross-fade back from the splash
+ *                                colors to their resting shadow values, so
+ *                                the underlying scene/effect can resume
+ *                                without a visible discontinuity.
+ *
+ * Splash takes priority over update_effects() (effect skips while splash
+ * is running) but yields to the long takeover animation.
+ * ────────────────────────────────────────────────────────────────────── */
+
+#define SPLASH_TOTAL_MS    300
+#define SPLASH_FREEZE_END   60
+#define SPLASH_SPRAY_END   180
+
+typedef struct {
+	bool     active;
+	uint32_t start_ms;
+	uint8_t  src;            /* 0-based source LED index */
+	uint8_t  src_rgb[3];     /* captured displayed color at press time */
+} SplashAnim;
+
+static SplashAnim sp;
+
+static void _splash_blend(uint8_t out[3], const uint8_t a[3], const uint8_t b[3], uint8_t mix_pct){
+	/* mix_pct = 0 → all a; 100 → all b; linear blend.  Caps at 100. */
+	if(mix_pct > 100) mix_pct = 100;
+	uint16_t inv = 100 - mix_pct;
+	out[0] = (uint8_t)(((uint16_t)a[0] * inv + (uint16_t)b[0] * mix_pct) / 100);
+	out[1] = (uint8_t)(((uint16_t)a[1] * inv + (uint16_t)b[1] * mix_pct) / 100);
+	out[2] = (uint8_t)(((uint16_t)a[2] * inv + (uint16_t)b[2] * mix_pct) / 100);
+}
+
+void splash_start(uint8_t src_0){
+	if(src_0 > 3) return;
+	sp.src = src_0;
+	sp.src_rgb[0] = ledvalues[src_0 * 3 + 0];
+	sp.src_rgb[1] = ledvalues[src_0 * 3 + 1];
+	sp.src_rgb[2] = ledvalues[src_0 * 3 + 2];
+	sp.start_ms = millis;
+	sp.active = true;
+}
+
+bool splash_tick(void){
+	if(!sp.active) return false;
+
+	uint32_t t = millis - sp.start_ms;
+	if(t >= SPLASH_TOTAL_MS){
+		/* Restore resting colors and exit. */
+		for(uint8_t i = 0; i < 4; i++) led_set_color(i + 1, led_resting[i]);
+		sp.active = false;
+		return false;
+	}
+
+	/* Cyclic-distance ring layout: TL(0), TR(1), BR(3), BL(2).
+	 * For a given source LED, classify each LED as: 0=source, 1=adjacent, 2=opposite. */
+	static const uint8_t ring_pos[4] = {0, 1, 3, 2};   /* led_idx → ring position */
+	static const uint8_t pos_to_led[4] = {0, 1, 3, 2}; /* ring position → led_idx */
+
+	uint8_t src_ring = ring_pos[sp.src];
+	uint8_t off[3] = {0, 0, 0};
+	uint8_t color[3];
+
+	if(t < SPLASH_FREEZE_END){
+		/* Phase 1 FREEZE: source at 100% of captured; others untouched
+		 * (they keep whatever the underlying effect last wrote, frozen). */
+		led_set_color(sp.src + 1, sp.src_rgb);
+	} else if(t < SPLASH_SPRAY_END){
+		/* Phase 2 SPRAY: source 100%, adjacent 90%, opposite 50%. */
+		led_set_color(sp.src + 1, sp.src_rgb);
+		uint8_t adj[3] = {(uint8_t)(sp.src_rgb[0] * 9 / 10),
+		                  (uint8_t)(sp.src_rgb[1] * 9 / 10),
+		                  (uint8_t)(sp.src_rgb[2] * 9 / 10)};
+		uint8_t opp[3] = {(uint8_t)(sp.src_rgb[0] / 2),
+		                  (uint8_t)(sp.src_rgb[1] / 2),
+		                  (uint8_t)(sp.src_rgb[2] / 2)};
+		for(uint8_t i = 0; i < 4; i++){
+			if(i == sp.src) continue;
+			uint8_t r = ring_pos[i];
+			uint8_t cyc_dist = (r >= src_ring) ? (r - src_ring) : (src_ring - r);
+			if(cyc_dist > 2) cyc_dist = 4 - cyc_dist;
+			led_set_color(i + 1, (cyc_dist == 1) ? adj : opp);
+		}
+		(void)off; (void)pos_to_led;  /* used by SETTLE branch via fall-through; suppress unused warning */
+	} else {
+		/* Phase 3 SETTLE: cross-fade splash → resting over remaining ms. */
+		uint16_t fade_t = t - SPLASH_SPRAY_END;
+		uint16_t fade_span = SPLASH_TOTAL_MS - SPLASH_SPRAY_END;
+		uint8_t mix = (uint8_t)((fade_t * 100u) / fade_span);   /* 0..100 */
+		/* Source: source_rgb → resting */
+		_splash_blend(color, sp.src_rgb, led_resting[sp.src], mix);
+		led_set_color(sp.src + 1, color);
+		/* Others: their splash color → resting */
+		uint8_t adj[3] = {(uint8_t)(sp.src_rgb[0] * 9 / 10),
+		                  (uint8_t)(sp.src_rgb[1] * 9 / 10),
+		                  (uint8_t)(sp.src_rgb[2] * 9 / 10)};
+		uint8_t opp[3] = {(uint8_t)(sp.src_rgb[0] / 2),
+		                  (uint8_t)(sp.src_rgb[1] / 2),
+		                  (uint8_t)(sp.src_rgb[2] / 2)};
+		for(uint8_t i = 0; i < 4; i++){
+			if(i == sp.src) continue;
+			uint8_t r = ring_pos[i];
+			uint8_t cyc_dist = (r >= src_ring) ? (r - src_ring) : (src_ring - r);
+			if(cyc_dist > 2) cyc_dist = 4 - cyc_dist;
+			const uint8_t *splash_c = (cyc_dist == 1) ? adj : opp;
+			_splash_blend(color, splash_c, led_resting[i], mix);
+			led_set_color(i + 1, color);
+		}
+	}
+	return true;
+}

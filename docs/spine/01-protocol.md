@@ -148,14 +148,14 @@ Default state: **enabled**.
 
 Sets the firmware-driven LED effect mode. The mode value is taken modulo 3, so values > 2 wrap around.
 
-When `n > 0`, the firmware animates LEDs 1–3 internally. Python-side idle animations should be suppressed to avoid conflicting LED writes. The badge emits `EVT_EFFECT_MODE` when the mode changes.
+When `n > 0`, the firmware animates all four LEDs internally. Python-side idle animations should be suppressed to avoid conflicting LED writes. The badge emits `EVT_EFFECT_MODE` when the mode changes.
 
 **Effect modes:**
-- `0` — Off: LEDs 1–3 show their EEPROM colors
-- `1` — Rainbow chase: one LED lit at a time, cycling through LEDs 1–3, hue advances 16 steps per cycle (step interval: 150 ms)
-- `2` — Breathe: all three LEDs fade in and out together with slow hue drift (step interval: 8 ms)
+- `0` — Off: all four LEDs return to their EEPROM resting colors
+- `1` — Rainbow chase: one LED lit at a time, cycling through LEDs 1–4, hue advances 16 steps per cycle (step interval: 150 ms)
+- `2` — Breathe: all four LEDs fade in and out together with slow hue drift (step interval: 8 ms)
 
-**LED 4 is never touched by effect modes** — it is reserved for the mute-state indicator.
+Bridges that need exclusive control of an LED (e.g. Teams toggle-mute on LED 4, FocusBridge while a target app has focus) must suspend the effect by sending `0x01 'E' 0` while they hold ownership and restore the prior mode when they release. See `dc29/bridges/teams.py` and `dc29/bridges/focus.py` for the save/restore pattern.
 
 **Example (enable breathe):** `01 45 02`
 

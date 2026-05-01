@@ -261,6 +261,8 @@ class FocusBridge(BaseBridge):
 
                 if now_focused and not focused:
                     log.info("%s gained focus", self.page.name)
+                    from dc29.stats import record
+                    record.app_focused(self.page.name)
                     if not in_meeting:
                         # Suspend any running effect so bridge LED colors aren't overwritten.
                         self._saved_effect = self._badge.state.effect_mode
@@ -278,14 +280,23 @@ class FocusBridge(BaseBridge):
 
                 elif not now_focused and focused:
                     log.info("%s lost focus", self.page.name)
-                    self._clear_page_leds()
+                    # Sticky-LEDs mode (config.sticky_focus_leds): keep the page's
+                    # LED colors lit until another bridge gains focus or the user
+                    # disables it. Skip the LED clear, effect-mode restoration, and
+                    # button-flash re-enable — but still clear set_current_page so
+                    # the TUI accurately shows "no app focused".
+                    from dc29.config import get_config
+                    sticky = get_config().sticky_focus_leds
+                    if not sticky:
+                        self._clear_page_leds()
                     if not in_meeting:
                         self._badge.set_current_page(None)
-                        # Restore effect mode that was active before this bridge took over.
-                        if self._saved_effect != 0:
-                            self._badge.set_effect_mode(self._saved_effect)
-                            self._saved_effect = 0
-                        self._badge.set_button_flash(True)
+                        if not sticky:
+                            # Restore effect mode that was active before this bridge took over.
+                            if self._saved_effect != 0:
+                                self._badge.set_effect_mode(self._saved_effect)
+                                self._saved_effect = 0
+                            self._badge.set_button_flash(True)
                     await self.on_focus_lost()
 
                 elif now_focused and last_in_meeting and not in_meeting:

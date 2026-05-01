@@ -4,7 +4,7 @@
 
 ← Back to [Hacker Guide](README.md)
 
-This walkthrough adds a new effect mode called **"police"**: alternates LEDs 1 and 3 (red and blue flashing like police lights). LEDs 2 and 4 are unused (LED 4 is always reserved for mute indicator).
+This walkthrough adds a new effect mode called **"police"**: alternates red/blue across all four LEDs in opposing pairs (LEDs 1&3 red while LEDs 2&4 blue, then swap). All four LEDs are now available to effects — bridges that need to take over an LED for state indication (e.g. Teams's mute LED on B4) suspend the effect mode while they hold ownership.
 
 ---
 
@@ -40,23 +40,20 @@ static void update_effects(void){
     } else if(effect_mode == 2){
         /* ... existing breathe ... */
     } else if(effect_mode == 3){
-        /* Police lights: alternates red/blue on LEDs 1 and 3.
-           LED 2 stays off. LED 4 NEVER touched (mute indicator). */
+        /* Police lights: red/blue alternate across all four LEDs.
+           LEDs 1&3 in one color, 2&4 in the other; swap each tick. */
         if((now - effect_timer) < EFFECT_POLICE_STEP_MS) return;
         effect_timer = now;
 
         uint8_t red[3]  = {200, 0, 0};
         uint8_t blue[3] = {0, 0, 200};
-        uint8_t off[3]  = {0, 0, 0};
 
         if(effect_step % 2 == 0){
-            led_set_color(1, red);
-            led_set_color(2, off);
-            led_set_color(3, blue);
+            led_set_color(1, red);  led_set_color(2, blue);
+            led_set_color(3, red);  led_set_color(4, blue);
         } else {
-            led_set_color(1, blue);
-            led_set_color(2, off);
-            led_set_color(3, red);
+            led_set_color(1, blue); led_set_color(2, red);
+            led_set_color(3, blue); led_set_color(4, red);
         }
         effect_step++;
     }
@@ -65,10 +62,10 @@ static void update_effects(void){
 
 ### Rules for writing effect code
 
-1. **Never touch LED 4.** It is reserved for the mute indicator. Any write to LED 4 from an effect will conflict with the Teams bridge.
+1. **Use any of LEDs 1–4.** The "LED 4 is reserved" rule was retired — bridges that want exclusive control of an LED suspend the effect via `set_effect_mode(0)` while they hold ownership and restore it afterwards. Your effect doesn't need to know about Teams or anyone else.
 2. **Always use the timer guard:** `if((now - effect_timer) < STEP_MS) return;`
 3. `effect_step` and `effect_hue` are reset to 0 automatically by `set_effect_mode()`. You don't need to reset them in your effect.
-4. When `effect_mode` returns to 0, `set_effect_mode(0)` restores LEDs 1–3 to their EEPROM colors. Your effect does not need cleanup code.
+4. When `effect_mode` returns to 0, `set_effect_mode(0)` restores all four LEDs to their EEPROM colors. Your effect does not need cleanup code.
 
 ---
 

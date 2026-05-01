@@ -189,6 +189,47 @@ def _parse_effect_mode(value: str) -> int:
     raise typer.Exit(1)
 
 
+def _apply_bridge_enable_flags(
+    cfg,
+    enable: Optional[list[str]],
+    enable_all: bool,
+) -> None:
+    """Translate CLI ``--enable`` / ``--enable-all`` flags into config overrides.
+
+    If ``--enable-all`` is passed, every bridge in the manifest is turned on.
+    Otherwise, each ``--enable <name>`` is added to the enabled set on top of
+    whatever the config file specified.  When neither flag is passed, the
+    config file's ``[bridges] enabled = [...]`` is the source of truth (which
+    defaults to empty — nothing runs).
+
+    Unknown names are reported but not fatal.
+    """
+    from dc29.bridges.manifest import all_bridge_names, find_spec
+
+    if enable_all:
+        cfg.enabled_bridges = set(all_bridge_names())
+        return
+
+    if not enable:
+        return
+
+    current = set(cfg.enabled_bridges)
+    for raw in enable:
+        for piece in raw.split(","):
+            name = piece.strip().lower()
+            if not name:
+                continue
+            if find_spec(name) is None:
+                typer.echo(
+                    f"Warning: --enable {name!r} — no such bridge.  "
+                    f"Run `dc29 bridges list` for available names.",
+                    err=True,
+                )
+                continue
+            current.add(name)
+    cfg.enabled_bridges = current
+
+
 # ---------------------------------------------------------------------------
 # ui command
 # ---------------------------------------------------------------------------
@@ -442,6 +483,41 @@ def flow(
         False, "--no-button-flash",
         help="Disable the LED ripple animation on button press.",
     ),
+    sticky_leds: Optional[bool] = typer.Option(
+        None, "--sticky-leds/--no-sticky-leds",
+        help=(
+            "Keep the last-focused page's LED colors lit when no app is focused. "
+            "Default reads from [badge] sticky_focus_leds in config.toml (off if unset)."
+        ),
+    ),
+    slider: Optional[bool] = typer.Option(
+        None, "--slider/--no-slider",
+        help=(
+            "Enable or disable the capacitive touch slider's volume up/down injection. "
+            "Default reads from [badge] slider_enabled in config.toml (on if unset)."
+        ),
+    ),
+    splash: Optional[bool] = typer.Option(
+        None, "--splash/--no-splash",
+        help=(
+            "Enable or disable the interactive splash-on-press animation that fires "
+            "when you poke a button while a light show is running. Default reads "
+            "from [badge] splash_on_press (on if unset)."
+        ),
+    ),
+    enable: Optional[list[str]] = typer.Option(
+        None, "--enable",
+        help=(
+            "Enable a bridge by name (repeatable, e.g. --enable teams --enable vscode). "
+            "Default: every bridge is OFF; nothing runs unless explicitly enabled here, "
+            "via --enable-all, or the [bridges] enabled list in config.toml. "
+            "Run `dc29 bridges list` to see all available names."
+        ),
+    ),
+    enable_all: bool = typer.Option(
+        False, "--enable-all",
+        help="Enable every bridge in the manifest. Useful for first-time setup.",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Debug logging."),
 ) -> None:
     """Run all bridges concurrently — the full context-aware shortcut experience.
@@ -474,6 +550,13 @@ def flow(
     cfg = get_config()
     resolved_port = _resolve_port(port or cfg.badge_port)
     resolved_hotkey = hotkey if hotkey is not None else cfg.teams_toggle_hotkey
+    if sticky_leds is not None:
+        cfg.sticky_focus_leds = sticky_leds
+    if slider is not None:
+        cfg.slider_enabled = slider
+    if splash is not None:
+        cfg.splash_on_press = splash
+    _apply_bridge_enable_flags(cfg, enable, enable_all)
 
     try:
         asyncio.run(
@@ -494,50 +577,57 @@ async def _run_flow(
     brightness: float,
     button_flash: bool,
 ) -> None:
-    """Run all bridges concurrently on one badge.
+    """Run enabled bridges via :class:`BridgeManager` on one badge.
 
-    Install order matters for the button hook chain: first installed = innermost
-    (lowest priority).  Teams is installed last so it wraps everything — its
-    _should_handle_button() wins whenever a meeting is active regardless of
-    which app currently has focus.
+    The manager handles startup, hot-toggle (no-op here without a TUI), and
+    teardown.  The flow runs until SIGINT.
     """
     from dc29.badge import BadgeAPI
-    from dc29.bridges.teams import TeamsBridge
-    from dc29.bridges.slack import SlackBridge
-    from dc29.bridges.outlook import OutlookBridge
-    from dc29.bridges.generic import GenericFocusBridge
-    from dc29.bridges.registry import ALL_PAGES
+    from dc29.bridges.manager import BridgeManager
+    from dc29.config import get_config
+
+    cfg = get_config()
+
+    log = logging.getLogger(__name__)
+    if not cfg.enabled_bridges:
+        log.warning(
+            "No bridges are enabled — nothing will happen.  "
+            "Enable some with --enable <name> (e.g. --enable teams --enable vscode), "
+            "or --enable-all, or set [bridges] enabled = [...] in config.toml."
+        )
 
     badge = BadgeAPI(port, brightness=brightness)
     if not button_flash:
         badge.send_raw(bytes([0x01, ord("F"), 0]))
+    # Mirror the configured slider state to the badge — firmware always boots
+    # with the slider on, so we only need to send when the user wants it off,
+    # but we always send to be defensive against firmware version drift.
+    badge.set_slider_enabled(cfg.slider_enabled)
+    badge.set_splash_on_press(cfg.splash_on_press)
 
-    # Build all generic bridges from the registry
-    generic_bridges = [GenericFocusBridge(badge, page_def) for page_def in ALL_PAGES]
+    manager = BridgeManager(badge, cfg)
+    started, _ = manager.reconcile()
 
-    # Install priority (lowest first, highest last):
-    #   Generic pages → Slack → Outlook → Teams (outermost = highest priority)
-    slack_bridge = SlackBridge(badge)
-    outlook_bridge = OutlookBridge(badge)
-    teams_bridge = TeamsBridge(badge, toggle_hotkey=toggle_hotkey)
-
-    log = logging.getLogger(__name__)
     log.info(
-        "Starting flow with %d app bridges + Teams + Slack + Outlook",
-        len(generic_bridges),
+        "Started %d bridge(s): %s",
+        len(started),
+        ", ".join(started) or "(none)",
     )
 
+    from dc29.stats import stats_save_loop, get_stats
+    stats_task = asyncio.create_task(stats_save_loop(), name="stats-save")
+
     try:
-        async with asyncio.TaskGroup() as tg:
-            for bridge in generic_bridges:
-                tg.create_task(bridge.run(), name=bridge.page.name)
-            tg.create_task(slack_bridge.run(),   name="slack")
-            tg.create_task(outlook_bridge.run(), name="outlook")
-            tg.create_task(teams_bridge.run(),   name="teams")
-    except* Exception as eg:
-        for exc in eg.exceptions:
-            log.error("Bridge error: %s", exc)
+        # Run until cancelled (SIGINT triggers a CancelledError here).
+        await asyncio.Event().wait()
     finally:
+        stats_task.cancel()
+        try:
+            await stats_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        get_stats().save(force=True)
+        await manager.stop_all()
         badge.close()
 
 
@@ -561,6 +651,42 @@ def start(
     no_button_flash: bool = typer.Option(
         False, "--no-button-flash",
         help="Disable the LED ripple animation on button press.",
+    ),
+    sticky_leds: Optional[bool] = typer.Option(
+        None, "--sticky-leds/--no-sticky-leds",
+        help=(
+            "Keep the last-focused page's LED colors lit when no app is focused. "
+            "Default reads from [badge] sticky_focus_leds in config.toml (off if unset). "
+            "Toggleable live in the TUI Effects tab."
+        ),
+    ),
+    slider: Optional[bool] = typer.Option(
+        None, "--slider/--no-slider",
+        help=(
+            "Enable or disable the capacitive touch slider's volume up/down injection. "
+            "Default reads from [badge] slider_enabled in config.toml (on if unset). "
+            "Toggleable live in the TUI Bridges & Inputs tab."
+        ),
+    ),
+    splash: Optional[bool] = typer.Option(
+        None, "--splash/--no-splash",
+        help=(
+            "Enable or disable the interactive splash-on-press animation. "
+            "Default reads from [badge] splash_on_press (on if unset). "
+            "Toggleable live in the TUI Effects tab."
+        ),
+    ),
+    enable: Optional[list[str]] = typer.Option(
+        None, "--enable",
+        help=(
+            "Enable a bridge by name (repeatable). "
+            "Default: every bridge is OFF — toggle them on here, with --enable-all, "
+            "in config.toml ([bridges] enabled = [...]), or live in the TUI Bridges tab."
+        ),
+    ),
+    enable_all: bool = typer.Option(
+        False, "--enable-all",
+        help="Enable every bridge in the manifest.",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Debug logging."),
 ) -> None:
@@ -598,6 +724,13 @@ def start(
     cfg = get_config()
     resolved_port = _resolve_port(port or cfg.badge_port)
     resolved_hotkey = hotkey if hotkey is not None else cfg.teams_toggle_hotkey
+    if sticky_leds is not None:
+        cfg.sticky_focus_leds = sticky_leds
+    if slider is not None:
+        cfg.slider_enabled = slider
+    if splash is not None:
+        cfg.splash_on_press = splash
+    _apply_bridge_enable_flags(cfg, enable, enable_all)
 
     try:
         asyncio.run(
@@ -618,61 +751,542 @@ async def _run_start(
     brightness: float,
     button_flash: bool,
 ) -> None:
-    """Run TUI + all bridges sharing one BadgeAPI instance."""
+    """Run TUI + enabled bridges sharing one BadgeAPI instance.
+
+    The TUI receives the :class:`BridgeManager` so toggling a bridge in the
+    Bridges tab triggers a live ``manager.reconcile()`` — no restart.
+    """
     from dc29.badge import BadgeAPI
+    from dc29.bridges.manager import BridgeManager
+    from dc29.config import get_config
     from dc29.tui.app import BadgeTUI
-    from dc29.bridges.teams import TeamsBridge
-    from dc29.bridges.slack import SlackBridge
-    from dc29.bridges.outlook import OutlookBridge
-    from dc29.bridges.generic import GenericFocusBridge
-    from dc29.bridges.registry import ALL_PAGES
 
     _log = logging.getLogger(__name__)
+
+    cfg = get_config()
 
     badge = BadgeAPI(port, brightness=brightness)
     if not button_flash:
         badge.send_raw(bytes([0x01, ord("F"), 0]))
+    badge.set_slider_enabled(cfg.slider_enabled)
+    badge.set_splash_on_press(cfg.splash_on_press)
 
-    # Build all bridges (same priority order as _run_flow)
-    generic_bridges = [GenericFocusBridge(badge, page_def) for page_def in ALL_PAGES]
-    slack_bridge   = SlackBridge(badge)
-    outlook_bridge = OutlookBridge(badge)
-    teams_bridge   = TeamsBridge(badge, toggle_hotkey=toggle_hotkey)
-    all_bridges    = generic_bridges + [slack_bridge, outlook_bridge, teams_bridge]
-
-    # Pre-wire TUI badge callbacks NOW so the TUI is the base of the
-    # button-hook chain.  Bridge tasks installed below wrap on top of it,
-    # and unhandled button presses fall through to the TUI for logging.
+    # Pre-wire TUI badge callbacks NOW so the TUI is the fallback receiver
+    # for any button press not claimed by a registered handler.  Bridges
+    # added later via the manager register handlers in front of this slot.
     loop = asyncio.get_running_loop()
-    tui = BadgeTUI(badge, pre_wire_loop=loop)
+    manager = BridgeManager(badge, cfg)
+    tui = BadgeTUI(badge, pre_wire_loop=loop, bridge_manager=manager)
 
     # Route all Python logging into the TUI Log tab so stderr stays clean.
     log_handler = tui.install_log_handler(loop, level=logging.getLogger().level)
 
+    started, _ = manager.reconcile()
     _log.info(
-        "Starting TUI + %d app bridges + Teams + Slack + Outlook",
-        len(generic_bridges),
+        "Starting TUI with %d bridge(s): %s",
+        len(started),
+        ", ".join(started) or "(none — toggle them on in the Bridges tab)",
     )
 
-    # Start all bridge tasks — they install their button hooks on top of the TUI.
-    bridge_tasks = [
-        asyncio.create_task(bridge.run(), name=bridge.page.name)
-        for bridge in all_bridges
-    ]
+    from dc29.stats import stats_save_loop, get_stats
+    stats_task = asyncio.create_task(stats_save_loop(), name="stats-save")
 
     try:
         await tui.run_async()
     finally:
+        stats_task.cancel()
+        try:
+            await stats_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        get_stats().save(force=True)
         tui.remove_log_handler(log_handler)
-        for t in bridge_tasks:
-            t.cancel()
-        await asyncio.gather(*bridge_tasks, return_exceptions=True)
+        await manager.stop_all()
         badge.close()
 
 
 # ---------------------------------------------------------------------------
 # clear-keys command
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# bridges subcommand group
+# ---------------------------------------------------------------------------
+
+bridges_app = typer.Typer(
+    help=(
+        "List, enable, and disable bridges that ship with dc29.\n\n"
+        "Bridges are off by default. Use `dc29 flow --enable <name>` for one-shot, "
+        "or persist via `[bridges] enabled = [...]` in ~/.config/dc29/config.toml."
+    ),
+)
+app.add_typer(bridges_app, name="bridges")
+
+
+# ---------------------------------------------------------------------------
+# scenes subcommand group — agent-facing entry points for light shows
+# ---------------------------------------------------------------------------
+
+scenes_app = typer.Typer(
+    help=(
+        "Authorable LED scenes — static colors, keyframe animations, or pointers "
+        "at firmware effect modes.  Scenes are TOML files an agent or human can "
+        "edit directly; see dc29/scenes.py for the schema."
+    ),
+)
+app.add_typer(scenes_app, name="scene")
+
+
+@scenes_app.command("list")
+def scene_list() -> None:
+    """List all scenes saved under ~/.config/dc29/scenes/."""
+    from dc29.scenes import DEFAULT_SCENE_DIR, list_scenes, load_scene
+    paths = list_scenes()
+    if not paths:
+        typer.echo(f"No scenes in {DEFAULT_SCENE_DIR}")
+        typer.echo("Save one with: dc29 scene save <name> --static r,g,b r,g,b r,g,b r,g,b")
+        return
+    typer.echo(f"Scenes in {DEFAULT_SCENE_DIR}:")
+    for p in paths:
+        try:
+            s = load_scene(p)
+            kind = s.kind()
+            desc = f" — {s.description}" if s.description else ""
+            typer.echo(f"  {p.stem:20} [{kind}]{desc}")
+        except Exception as exc:
+            typer.echo(f"  {p.stem:20} [ERROR: {exc}]", err=True)
+
+
+def _parse_color_arg(s: str, *, where: str) -> tuple[int, int, int]:
+    """Parse a 'r,g,b' or 'r g b' or '#rrggbb' color string into a tuple."""
+    s = s.strip()
+    if s.startswith("#"):
+        h = s[1:]
+        if len(h) != 6:
+            raise typer.BadParameter(f"{where}: hex must be #rrggbb (got {s!r})")
+        return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+    parts = [p for p in s.replace(",", " ").split() if p]
+    if len(parts) != 3:
+        raise typer.BadParameter(f"{where}: expected 3 components, got {s!r}")
+    try:
+        triple = tuple(int(p) for p in parts)
+    except ValueError as exc:
+        raise typer.BadParameter(f"{where}: {exc}") from exc
+    if not all(0 <= c <= 255 for c in triple):
+        raise typer.BadParameter(f"{where}: components must be 0..255")
+    return triple  # type: ignore[return-value]
+
+
+@scenes_app.command("save")
+def scene_save(
+    name: str = typer.Argument(..., help="Scene name; also becomes the filename slug."),
+    static: Optional[list[str]] = typer.Option(
+        None, "--static",
+        help="Four 'r,g,b' (or '#rrggbb') colors for LEDs 1..4. Repeat 4 times.",
+    ),
+    firmware: Optional[str] = typer.Option(
+        None, "--firmware",
+        help=(
+            "Firmware effect-mode name (off/rainbow-chase/breathe/wipe/twinkle/"
+            "gradient/theater/cylon) or numeric mode 0..7."
+        ),
+    ),
+    description: str = typer.Option("", "--description", "-d"),
+    brightness: float = typer.Option(1.0, "--brightness", "-b", min=0.0, max=1.0),
+) -> None:
+    """Author a static or firmware scene from the shell.
+
+    For keyframe animations, write the TOML directly — the schema is
+    documented in `dc29/scenes.py`.
+    """
+    from dc29.scenes import (
+        Scene, StaticPayload, FirmwarePayload, save_scene,
+    )
+    from dc29.protocol import EFFECT_NAMES
+
+    s: Scene
+    if static and firmware:
+        raise typer.BadParameter("--static and --firmware are mutually exclusive")
+    if static:
+        if len(static) != 4:
+            raise typer.BadParameter("--static needs exactly 4 colors (one per LED)")
+        c1, c2, c3, c4 = (_parse_color_arg(v, where=f"LED{i+1}") for i, v in enumerate(static))
+        s = Scene(
+            name=name, description=description, brightness=brightness,
+            static=StaticPayload(c1, c2, c3, c4),
+        )
+    elif firmware:
+        rev = {v: k for k, v in EFFECT_NAMES.items()}
+        try:
+            mode = int(firmware)
+        except ValueError:
+            mode = rev.get(firmware.lower(), -1)
+        if mode not in EFFECT_NAMES:
+            raise typer.BadParameter(
+                f"--firmware must be 0..{max(EFFECT_NAMES)} or one of "
+                f"{sorted(rev)}; got {firmware!r}"
+            )
+        s = Scene(
+            name=name, description=description, brightness=brightness,
+            firmware=FirmwarePayload(mode=mode),
+        )
+    else:
+        raise typer.BadParameter("Pass either --static or --firmware (or hand-write TOML)")
+
+    path = save_scene(s)
+    typer.echo(f"✓ Saved {s.name!r} ({s.kind()}) → {path}")
+
+
+@scenes_app.command("play")
+def scene_play(
+    target: str = typer.Argument(..., help="Scene name (lookup in default dir) or path to .toml file."),
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p", help="Badge serial port. Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+    once: bool = typer.Option(False, "--once", help="Run keyframe animation once and exit (overrides scene's loop=true)."),
+) -> None:
+    """Play a scene on the badge until Ctrl-C.
+
+    Static and firmware scenes apply once and hold; animation scenes loop
+    (or play once with `--once`) until interrupted.
+    """
+    import asyncio
+    from pathlib import Path
+    from dc29.badge import BadgeAPI
+    from dc29.scenes import (
+        DEFAULT_SCENE_DIR, load_scene, SceneRunner,
+    )
+
+    candidate = Path(target)
+    if not candidate.exists():
+        candidate = DEFAULT_SCENE_DIR / f"{target}.toml"
+    if not candidate.exists():
+        typer.echo(f"Scene not found: {target} (also looked at {candidate})", err=True)
+        raise typer.Exit(2)
+
+    scene = load_scene(candidate)
+    if once and scene.animation is not None:
+        scene.animation.loop = False
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+    deadline = time.monotonic() + 5.0
+    while not badge.connected and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if not badge.connected:
+        typer.echo(f"Could not open {resolved_port}", err=True)
+        raise typer.Exit(1)
+
+    runner = SceneRunner(badge, scene)
+    typer.echo(f"▶ Playing {scene.name!r} ({scene.kind()}) on {resolved_port}. Ctrl-C to stop.")
+    try:
+        asyncio.run(runner.run())
+    except KeyboardInterrupt:
+        typer.echo("\n■ Stopped.")
+    finally:
+        badge.close()
+
+
+# ---------------------------------------------------------------------------
+# audio subcommand group — for the audio-reactive bridge
+# ---------------------------------------------------------------------------
+
+audio_app = typer.Typer(
+    help=(
+        "Live audio-reactive LED show.  Uses a virtual loopback device "
+        "(BlackHole on macOS) to capture system audio without a microphone, "
+        "then runs FFT + beat detection in Python.  Setup: "
+        "`brew install blackhole-2ch`, then create a Multi-Output Device in "
+        "Audio MIDI Setup combining your speakers + BlackHole.  Run "
+        "`dc29 audio status` to confirm BlackHole is detected."
+    ),
+)
+app.add_typer(audio_app, name="audio")
+
+
+@audio_app.command("status")
+def audio_status() -> None:
+    """List input-capable audio devices and confirm BlackHole is present."""
+    from dc29.audio import HAS_AUDIO, find_blackhole, list_input_devices
+
+    if not HAS_AUDIO:
+        typer.echo(
+            "Audio extras not installed.  Run:\n"
+            "  pip install 'dc29-badge[audio]'\n"
+            "(installs sounddevice + numpy)",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    devices = list_input_devices()
+    bh = find_blackhole()
+    if not devices:
+        typer.echo("No input devices detected (audio system error?).", err=True)
+        raise typer.Exit(1)
+
+    typer.echo("Audio input devices:")
+    for d in devices:
+        marker = "  ⭐ "  if d["index"] == bh else "     "
+        typer.echo(f"{marker}[{d['index']:>2}] {d['name']}  ({d['channels']} ch)")
+    typer.echo("")
+    if bh is None:
+        typer.echo(
+            "BlackHole not found.  Install with:\n"
+            "  brew install blackhole-2ch\n\n"
+            "Then in Audio MIDI Setup, create a Multi-Output Device combining\n"
+            "your speakers/AirPods + BlackHole, and select it as system output.\n"
+            "(Audio plays through your speakers AND we capture it via BlackHole.)",
+            err=True,
+        )
+    else:
+        typer.echo(f"✓ BlackHole detected at index {bh}.")
+
+
+@audio_app.command("test")
+def audio_test(
+    seconds: int = typer.Option(10, "--seconds", "-s", min=1, max=120,
+                                help="How long to capture before stopping."),
+    device: Optional[str] = typer.Option(None, "--device", "-d",
+                                         help="Substring of input device name."),
+) -> None:
+    """Capture audio for N seconds and print live RMS / band / beat state.
+
+    Useful for confirming BlackHole is wired up correctly: play music,
+    run this, watch the bars dance.
+    """
+    from dc29.audio import HAS_AUDIO, AudioCapture
+    if not HAS_AUDIO:
+        typer.echo("Audio extras not installed: pip install 'dc29-badge[audio]'", err=True)
+        raise typer.Exit(1)
+
+    last_print = 0.0
+    beats_seen = 0
+
+    def on_features(f) -> None:
+        nonlocal last_print, beats_seen
+        if f.beat:
+            beats_seen += 1
+        # Throttle prints to ~10 Hz so the terminal doesn't melt.
+        now = time.monotonic()
+        if now - last_print < 0.1:
+            return
+        last_print = now
+
+        def bar(v: float, width: int = 20) -> str:
+            n = int(max(0.0, min(1.0, v)) * width)
+            return "█" * n + "░" * (width - n)
+
+        beat_marker = "♪" if f.beat else " "
+        typer.echo(
+            f"\rrms {bar(f.rms, 10)}  bass {bar(f.bass, 10)}  "
+            f"mid {bar(f.mid, 10)}  treble {bar(f.treble, 10)}  "
+            f"{beat_marker} beats={beats_seen}    ",
+            nl=False,
+        )
+
+    cap = AudioCapture(device=device, on_features=on_features)
+    try:
+        cap.start()
+    except Exception as exc:
+        typer.echo(f"Capture failed: {exc}", err=True)
+        raise typer.Exit(1)
+    try:
+        time.sleep(seconds)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        cap.stop()
+    typer.echo(f"\n\nTotal beats detected over {seconds}s: {beats_seen}")
+
+
+# ---------------------------------------------------------------------------
+# spotify subcommand group — auth + status for the reactive bridge
+# ---------------------------------------------------------------------------
+
+spotify_app = typer.Typer(
+    help=(
+        "Connect dc29 to Spotify so the badge LEDs can react to whatever "
+        "you're listening to. One-time setup: register a free Spotify dev "
+        "app at https://developer.spotify.com/dashboard, add this redirect "
+        "URI: http://localhost:8754/callback, paste the Client ID into "
+        "~/.config/dc29/config.toml under [spotify] client_id, then run "
+        "`dc29 spotify auth`."
+    ),
+)
+app.add_typer(spotify_app, name="spotify")
+
+
+@spotify_app.command("auth")
+def spotify_auth() -> None:
+    """Run the OAuth flow and save a long-lived refresh token.
+
+    Opens a browser, waits for you to consent, captures the redirect, and
+    persists the token at ~/.dc29_spotify_token (mode 0600).  Run once;
+    subsequent dc29 invocations reuse the token until you revoke it on
+    the Spotify side.
+    """
+    from dc29.config import get_config
+    from dc29.spotify import authenticate
+
+    cfg = get_config()
+    client_id = cfg.spotify_client_id
+    if not client_id:
+        typer.echo(
+            "No Spotify client_id configured.  Add this to "
+            "~/.config/dc29/config.toml:\n\n"
+            "    [spotify]\n"
+            '    client_id = "your-client-id-here"\n\n'
+            "Get a client ID from https://developer.spotify.com/dashboard "
+            "(free, takes ~2 minutes).  Add http://localhost:8754/callback "
+            "to your app's Redirect URIs.",
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    try:
+        authenticate(client_id, cfg.spotify_redirect_uri)
+    except Exception as exc:
+        typer.echo(f"Auth failed: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo("✓ Authenticated.  Token saved to ~/.dc29_spotify_token.")
+    typer.echo("  Now enable the bridge:  dc29 flow --enable spotify-reactive")
+
+
+@spotify_app.command("status")
+def spotify_status() -> None:
+    """Show the current Spotify connection state and what's playing."""
+    from dc29.config import get_config
+    from dc29.spotify import ANALYSIS_CACHE_DIR, SpotifyClient, TOKEN_PATH, TokenSet
+
+    cfg = get_config()
+    client_id = cfg.spotify_client_id
+    if not client_id:
+        typer.echo("[spotify] client_id not configured — see `dc29 spotify auth --help`.")
+        return
+
+    typer.echo(f"client_id: {client_id}")
+    typer.echo(f"redirect_uri: {cfg.spotify_redirect_uri}")
+    typer.echo(f"token file: {TOKEN_PATH} ({'present' if TOKEN_PATH.exists() else 'absent'})")
+    cache_count = len(list(ANALYSIS_CACHE_DIR.glob("*.json"))) if ANALYSIS_CACHE_DIR.exists() else 0
+    typer.echo(f"analysis cache: {cache_count} track(s) at {ANALYSIS_CACHE_DIR}")
+
+    tokens = TokenSet.load()
+    if not tokens:
+        typer.echo("No tokens — run `dc29 spotify auth`.")
+        return
+
+    expires_in = tokens.expires_at - time.time()
+    typer.echo(
+        f"access token: {'valid' if expires_in > 30 else 'expired'} "
+        f"({int(expires_in)}s until expiry)"
+    )
+
+    client = SpotifyClient(client_id, cfg.spotify_redirect_uri)
+    try:
+        playing = client.currently_playing()
+    except Exception as exc:
+        typer.echo(f"Failed to fetch currently-playing: {exc}", err=True)
+        return
+
+    if playing is None:
+        typer.echo("Nothing currently playing.")
+    else:
+        typer.echo(
+            f"Now playing: {playing.artist} — {playing.track_name} "
+            f"[{'▶' if playing.is_playing else '⏸'} "
+            f"{playing.progress_ms // 1000}s/{playing.duration_ms // 1000}s]"
+        )
+        typer.echo(f"track id: {playing.track_id}")
+
+
+# ---------------------------------------------------------------------------
+# stats subcommand group — local nerd-fuel
+# ---------------------------------------------------------------------------
+
+stats_app = typer.Typer(
+    help=(
+        "Local-only fun stats: emails deleted, Teams meetings joined, mute "
+        "toggles, button thumps, etc. Stored at ~/.config/dc29/stats.toml — "
+        "never sent anywhere. Edit or delete the file at will."
+    ),
+)
+app.add_typer(stats_app, name="stats")
+
+
+@stats_app.callback(invoke_without_command=True)
+def stats_default(ctx: typer.Context) -> None:
+    """Show all collected stats (default action when no subcommand given)."""
+    if ctx.invoked_subcommand is not None:
+        return
+    from dc29.stats import render_summary
+    typer.echo(render_summary())
+
+
+@stats_app.command("show")
+def stats_show() -> None:
+    """Show all collected stats."""
+    from dc29.stats import render_summary
+    typer.echo(render_summary())
+
+
+@stats_app.command("reset")
+def stats_reset(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
+) -> None:
+    """Wipe all stats. Sets a fresh 'tracking since' timestamp."""
+    from dc29.stats import get_stats
+    if not yes:
+        typer.echo("This will wipe every counter and unique-set lifetime tally.")
+        confirm = typer.confirm("Continue?")
+        if not confirm:
+            typer.echo("Cancelled.")
+            return
+    get_stats().reset()
+    typer.echo("✓ Stats reset.")
+
+
+@stats_app.command("export")
+def stats_export() -> None:
+    """Print the full stats snapshot as JSON to stdout."""
+    import json
+    from dc29.stats import get_stats
+    typer.echo(json.dumps(get_stats().snapshot(), indent=2, default=str))
+
+
+# ---------------------------------------------------------------------------
+
+
+@scenes_app.command("delete")
+def scene_delete(
+    name: str = typer.Argument(..., help="Scene name (without .toml)."),
+) -> None:
+    """Delete a saved scene from ~/.config/dc29/scenes/."""
+    from dc29.scenes import DEFAULT_SCENE_DIR
+    path = DEFAULT_SCENE_DIR / f"{name}.toml"
+    if not path.exists():
+        typer.echo(f"No such scene: {path}", err=True)
+        raise typer.Exit(2)
+    path.unlink()
+    typer.echo(f"✓ Deleted {path}")
+
+
+# ---------------------------------------------------------------------------
+
+
+@bridges_app.command("list")
+def bridges_list() -> None:
+    """List every bridge with its name, description, and current enabled state."""
+    from dc29.bridges.manifest import BRIDGE_MANIFEST
+    from dc29.config import get_config
+
+    enabled = get_config().enabled_bridges
+    for spec in BRIDGE_MANIFEST:
+        marker = "✓" if spec.name in enabled else " "
+        typer.echo(f"  [{marker}] {spec.name:14} — {spec.description}")
+    if not enabled:
+        typer.echo("\n  (none enabled — pass --enable to flow/start, or edit config.toml)")
 
 
 @app.command("clear-keys")

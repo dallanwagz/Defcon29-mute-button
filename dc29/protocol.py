@@ -127,6 +127,64 @@ will emit ``EVT_EFFECT_MODE`` when the mode changes internally (e.g., after a
 long-press chord).
 """
 
+CMD_FIRE_TAKEOVER: int = ord("T")
+"""
+``0x01 'T' n`` — Trigger the firmware takeover ripple animation for button *n*.
+
+Fires the same 4-phase personality-based animation that runs on a button press
+when ``button_flash`` is enabled, but without requiring a physical press.  Use
+this from the host to give satisfying visual feedback for app-handled actions
+(e.g. an Outlook delete via the bridge) when ``button_flash`` is suppressed
+because Python is managing the LEDs.
+
+Arguments (1 byte):
+  * ``n`` — button index, 1–4. Out-of-range values are silently ignored by firmware.
+"""
+
+CMD_PAINT_ALL: int = ord("P")
+"""
+``0x01 'P' r1 g1 b1 r2 g2 b2 r3 g3 b3 r4 g4 b4`` — Paint all four LEDs atomically.
+
+12-byte payload sets every LED in one packet.  Use this for animation streams
+where atomicity matters (no inter-LED tearing) and bandwidth matters (one
+13-byte packet vs four 6-byte ``L`` commands per frame).
+
+The firmware applies all four colors via :func:`led_set_resting_color` so the
+takeover-animation defer-and-restore logic works correctly.
+"""
+
+CMD_SET_SPLASH: int = ord("I")
+"""
+``0x01 'I' v`` — Enable (``v=1``) or disable (``v=0``) the interactive
+splash-on-press animation.
+
+When enabled, pressing a button while a firmware effect mode is running
+fires a ~300 ms localized color-spray animation that captures the pressed
+LED's current displayed color and sprays it outward.  Designed as a fidget
+interaction for "RGB toy" mode — works on battery without USB.
+
+RAM-only: setting is not persisted to EEPROM and resets to enabled on each
+power-on / firmware boot.
+
+Arguments (1 byte):
+  * ``v`` — ``0`` to disable, ``1`` to enable (firmware default is enabled)
+"""
+
+CMD_SET_SLIDER: int = ord("S")
+"""
+``0x01 'S' v`` — Enable (``v=1``) or disable (``v=0``) the capacitive touch slider.
+
+When disabled, the slider's position-change events no longer inject HID
+volume-up / volume-down keystrokes.  The firmware still scans the slider so
+the position cache stays accurate; only the keystroke injection is gated.
+
+RAM-only: setting is not persisted to EEPROM and resets to enabled on each
+power-on / firmware boot.
+
+Arguments (1 byte):
+  * ``v`` — ``0`` to disable, ``1`` to enable (firmware default is enabled)
+"""
+
 # ---------------------------------------------------------------------------
 # Badge → host event bytes (the byte that follows ESCAPE)
 # ---------------------------------------------------------------------------
@@ -207,24 +265,66 @@ class MuteState(IntEnum):
 
 
 class EffectMode(IntEnum):
-    """Firmware-driven LED effect modes (used with ``CMD_SET_EFFECT``)."""
+    """Firmware-driven LED effect modes (used with ``CMD_SET_EFFECT``).
+
+    All modes animate every LED.  Bridges that need exclusive control of an
+    LED (Teams toggle-mute on B4, FocusBridge during target-app focus) call
+    ``set_effect_mode(0)`` to suspend the effect while they hold ownership.
+    """
 
     OFF = 0
-    """All LEDs off; no firmware animation running."""
+    """All LEDs return to their EEPROM resting colors; no firmware animation."""
 
     RAINBOW_CHASE = 1
     """One LED lit at a time cycling through all four, hue advances per step."""
 
     BREATHE = 2
-    """All LEDs fade in and out together."""
+    """All four LEDs fade in and out together with slow hue drift."""
+
+    WIPE = 3
+    """A single hue rolls across LEDs 1→4, wipes back to off, then a new hue."""
+
+    TWINKLE = 4
+    """Pseudo-random sparkles — each tick, one LED flickers at a random brightness."""
+
+    GRADIENT = 5
+    """Smooth hue gradient across the four LEDs, scrolling slowly."""
+
+    THEATER = 6
+    """Theater-chase: alternating odd/even LEDs lit, hue drifts across cycles."""
+
+    CYLON = 7
+    """Knight-Rider-style sweep — bright bouncing LED with dim trail."""
+
+    PARTICLES = 8
+    """Two physics particles drifting through the 2x2 LED grid, colors blending on proximity."""
 
 
 EFFECT_NAMES: dict[int, str] = {
     EffectMode.OFF: "off",
     EffectMode.RAINBOW_CHASE: "rainbow-chase",
     EffectMode.BREATHE: "breathe",
+    EffectMode.WIPE: "wipe",
+    EffectMode.TWINKLE: "twinkle",
+    EffectMode.GRADIENT: "gradient",
+    EffectMode.THEATER: "theater",
+    EffectMode.CYLON: "cylon",
+    EffectMode.PARTICLES: "particles",
 }
 """Human-readable names for each :class:`EffectMode`."""
+
+EFFECT_DESCRIPTIONS: dict[int, str] = {
+    EffectMode.OFF:           "Static EEPROM colors — no animation.",
+    EffectMode.RAINBOW_CHASE: "One LED at a time cycles around the row, hue rotating.",
+    EffectMode.BREATHE:       "All four LEDs fade in and out together with hue drift.",
+    EffectMode.WIPE:          "A single color paints across LEDs 1→4, wipes off, then a new hue.",
+    EffectMode.TWINKLE:       "Random sparkles — like distant stars or fireflies.",
+    EffectMode.GRADIENT:      "A smooth hue gradient that slowly scrolls across the row.",
+    EffectMode.THEATER:       "Marquee-style alternating dot pattern shifting across the LEDs.",
+    EffectMode.CYLON:         "Knight Rider sweep — a bright LED bounces back and forth.",
+    EffectMode.PARTICLES:     "Two physics-driven particles drift through the 2x2 grid, colors blending and bouncing off walls.",
+}
+"""Short human-readable descriptions for the TUI scene grid + ``dc29 set-effect --help``."""
 
 # ---------------------------------------------------------------------------
 # HID modifier byte constants

@@ -123,7 +123,14 @@ class BaseBridge(ABC):
     def __init__(self, badge: "BadgeAPI") -> None:
         self._badge = badge
         self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._original_on_button: Optional[Callable] = None
+        # Cookie returned by badge.add_button_handler — held so we can
+        # cleanly deregister in _uninstall_button_hook (and survive hot-stop
+        # via task.cancel without leaking handlers).
+        self._button_handler_record = None
+        # Set by BridgeManager from BRIDGE_MANIFEST priority before the run
+        # task is created.  Defaults to 0 if the bridge is started directly
+        # (e.g. unit tests), in which case ties keep insertion order.
+        self._priority_value: int = 0
 
         self.on_state_change: Optional[Callable] = None
         """Optional callback fired (from the asyncio loop) on any state change."""
@@ -169,28 +176,39 @@ class BaseBridge(ABC):
         return True
 
     def _install_button_hook(self) -> None:
-        """Intercept badge button-press events for buttons in :attr:`page`."""
+        """Register a priority-ordered button handler with the badge.
+
+        Idempotent — calling twice is a no-op (already-registered handlers
+        are not duplicated).  Bridges hot-toggled by :class:`BridgeManager`
+        rely on the matching :meth:`_uninstall_button_hook` cleanly removing
+        the registration on cancellation.
+        """
         self._loop = asyncio.get_running_loop()
-        self._original_on_button = self._badge.on_button_press
+        if self._button_handler_record is not None:
+            return  # already installed
 
         owned = set(self.page.buttons.keys())
 
         def _on_button(btn: int, mod: int, kc: int) -> None:
-            if btn in owned and self._should_handle_button(btn):
-                self._loop.call_soon_threadsafe(
-                    asyncio.ensure_future,
-                    self.handle_button(btn),
-                )
-            elif self._original_on_button is not None:
-                self._original_on_button(btn, mod, kc)
+            # Reader thread → marshal onto our event loop.
+            self._loop.call_soon_threadsafe(
+                asyncio.ensure_future,
+                self.handle_button(btn),
+            )
 
-        self._badge.on_button_press = _on_button
+        self._button_handler_record = self._badge.add_button_handler(
+            name=self.page.name,
+            priority=self._priority_value,
+            owned_buttons=owned,
+            should_handle=self._should_handle_button,
+            handler=_on_button,
+        )
 
     def _uninstall_button_hook(self) -> None:
-        """Restore the previous button-press callback."""
-        if self._original_on_button is not None:
-            self._badge.on_button_press = self._original_on_button
-        self._original_on_button = None
+        """Deregister the button handler (idempotent)."""
+        if self._button_handler_record is not None:
+            self._badge.remove_button_handler(self._button_handler_record)
+            self._button_handler_record = None
 
     def _apply_page_leds(self) -> None:
         """Set LED colors for all buttons defined in :attr:`page`."""

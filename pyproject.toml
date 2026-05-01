@@ -18,7 +18,8 @@ dependencies = [
 tui    = ["textual>=0.60"]
 hotkey = ["pynput>=1.7"]
 config = ["tomli>=2.0; python_version < '3.11'"]
-all    = ["dc29-badge[tui,hotkey,config]"]
+audio  = ["sounddevice>=0.4", "numpy>=1.24"]
+all    = ["dc29-badge[tui,hotkey,config,audio]"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["dc29"]

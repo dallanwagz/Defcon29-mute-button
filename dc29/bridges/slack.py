@@ -14,11 +14,12 @@ case-insensitive).
 
 Default button layout
 ---------------------
-  B1  All Unreads       Cmd+Shift+A   warm red
+  B1  All Unreads       Cmd+Shift+A   green   (top-left, positional green)
   B2  Mentions          Cmd+Shift+M   cool blue
   B3  Quick Switcher    Cmd+K         amber
-  B4  Toggle Huddle     Cmd+Shift+H   green
-      (in huddle →      Cmd+Shift+Spc mute toggle, LED = live mute state)
+  B4  Toggle Huddle     Cmd+Shift+H   warm red (positional red)
+      (in huddle →      Cmd+Shift+Spc mute toggle, LED = live mute state
+       red=muted / green=live overrides the idle red.)
 """
 
 from __future__ import annotations
@@ -250,9 +251,9 @@ class SlackBridge(FocusBridge):
 
         if in_huddle:
             if is_muted:
-                self._badge.set_led(btn, *POSITION_ACTIVE[1])   # red  = muted
+                self._badge.set_led(btn, *POSITION_ACTIVE[4])   # red  = muted
             else:
-                self._badge.set_led(btn, *POSITION_ACTIVE[4])   # green = live
+                self._badge.set_led(btn, *POSITION_ACTIVE[1])   # green = live
         else:
             pb = self._page.buttons.get(btn)
             if pb:

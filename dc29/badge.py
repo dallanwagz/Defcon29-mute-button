@@ -39,6 +39,10 @@ from dc29.protocol import (
     CMD_SET_LED,
     CMD_SET_EFFECT,
     CMD_BUTTON_FLASH,
+    CMD_FIRE_TAKEOVER,
+    CMD_PAINT_ALL,
+    CMD_SET_SLIDER,
+    CMD_SET_SPLASH,
     CMD_SET_KEY,
     CMD_QUERY_KEY,
     EVT_BUTTON,
@@ -81,6 +85,34 @@ class BadgeState:
     current_page: Optional[Any] = None
     """The currently active bridge page (a :class:`~dc29.bridges.base.BridgePage`
     or ``None``), updated by the bridge layer via :meth:`BadgeAPI.set_current_page`."""
+
+
+@dataclass
+class _ButtonHandler:
+    """Internal registration record for a priority-ordered button handler.
+
+    Bridges register one of these via :meth:`BadgeAPI.add_button_handler` when
+    they install their button hook, and remove it when they tear down.  The
+    reader thread iterates the handler list in priority order on every
+    EVT_BUTTON; the first handler whose ``owned_buttons`` includes the press
+    AND whose ``should_handle`` returns ``True`` gets to handle it.  If none
+    do, :attr:`BadgeAPI.on_button_press` (the public fallback slot) fires.
+    """
+
+    name: str
+    """Human label, used for log messages.  Typically the bridge/page name."""
+
+    priority: int
+    """Higher = called first.  Sorted descending on registration."""
+
+    owned_buttons: set[int]
+    """Button numbers (1–4) this handler claims interest in."""
+
+    should_handle: Callable[[int], bool]
+    """Late filter — e.g. ``FocusBridge`` only returns True while focused."""
+
+    handler: Callable[[int, int, int], None]
+    """Called with ``(button, modifier, keycode)`` when this handler claims a press."""
 
 
 class BadgeAPI:
@@ -129,7 +161,21 @@ class BadgeAPI:
         # ------------------------------------------------------------------
 
         self.on_button_press: Optional[Callable[[int, int, int], None]] = None
-        """Called when a button is pressed: ``(button: int, modifier: int, keycode: int)``."""
+        """Fallback button-press callback.
+
+        Fired only when no registered :class:`_ButtonHandler` (added via
+        :meth:`add_button_handler`) claims the press.  Use this for
+        diagnostics / logging — bridges should register a handler instead so
+        they can hot-add and hot-remove without disturbing the chain.
+        """
+
+        # Priority-ordered registry of button handlers.  The reader thread
+        # iterates this on every EVT_BUTTON; the asyncio loop mutates it via
+        # add_button_handler / remove_button_handler.  The lock keeps a
+        # snapshot consistent across the iterate-and-call sequence so
+        # registration churn during a press doesn't crash the reader.
+        self._button_handlers: list[_ButtonHandler] = []
+        self._button_handlers_lock = threading.Lock()
 
         self.on_key_reply: Optional[Callable[[int, int, int], None]] = None
         """Called when the badge replies to a key query: ``(button, modifier, keycode)``."""
@@ -223,6 +269,33 @@ class BadgeAPI:
         ])
         self._write(cmd)
 
+    def set_all_leds(
+        self,
+        c1: tuple[int, int, int],
+        c2: tuple[int, int, int],
+        c3: tuple[int, int, int],
+        c4: tuple[int, int, int],
+    ) -> None:
+        """Paint all four LEDs atomically in a single packet.
+
+        Sends ``0x01 'P' r1 g1 b1 r2 g2 b2 r3 g3 b3 r4 g4 b4`` (13 bytes total).
+        Use this instead of four separate :meth:`set_led` calls for animation
+        streams: the badge applies all four colors in one main-loop iteration
+        so frames don't tear, and you halve the per-frame serial cost.
+
+        The brightness scalar is applied to every component.
+
+        Args:
+            c1, c2, c3, c4: Each a ``(r, g, b)`` triple, components 0–255.
+        """
+        s = self._brightness
+        payload = bytearray([ESCAPE, CMD_PAINT_ALL])
+        for (r, g, b) in (c1, c2, c3, c4):
+            payload.append(int(r * s) & 0xFF)
+            payload.append(int(g * s) & 0xFF)
+            payload.append(int(b * s) & 0xFF)
+        self._write(bytes(payload))
+
     def set_mute_state(self, state: MuteState) -> None:
         """Drive LED 4 to reflect the Teams meeting mute state.
 
@@ -269,6 +342,50 @@ class BadgeAPI:
         cmd = bytes([ESCAPE, CMD_SET_EFFECT, mode & 0xFF])
         self._write(cmd)
 
+    # ------------------------------------------------------------------
+    # Button handler registry — used by bridges to claim button presses
+    # ------------------------------------------------------------------
+
+    def add_button_handler(
+        self,
+        *,
+        name: str,
+        priority: int,
+        owned_buttons,
+        should_handle: Callable[[int], bool],
+        handler: Callable[[int, int, int], None],
+    ) -> _ButtonHandler:
+        """Register a priority-ordered button handler.
+
+        Use this from bridges instead of mutating :attr:`on_button_press`.
+        Higher ``priority`` runs first; ties keep insertion order.  The
+        returned :class:`_ButtonHandler` is the cookie to pass back to
+        :meth:`remove_button_handler` for clean teardown.
+
+        Thread-safe: registration and removal can happen from any thread,
+        and the reader thread snapshots the list before iterating so a press
+        landing mid-mutation is dispatched against a consistent view.
+        """
+        record = _ButtonHandler(
+            name=name,
+            priority=priority,
+            owned_buttons=set(owned_buttons),
+            should_handle=should_handle,
+            handler=handler,
+        )
+        with self._button_handlers_lock:
+            self._button_handlers.append(record)
+            self._button_handlers.sort(key=lambda h: h.priority, reverse=True)
+        return record
+
+    def remove_button_handler(self, record: _ButtonHandler) -> None:
+        """Deregister a handler previously added via :meth:`add_button_handler`."""
+        with self._button_handlers_lock:
+            try:
+                self._button_handlers.remove(record)
+            except ValueError:
+                pass
+
     def set_button_flash(self, enabled: bool) -> None:
         """Enable or disable the white LED flash on button press.
 
@@ -276,6 +393,52 @@ class BadgeAPI:
             enabled: ``True`` to enable (firmware default), ``False`` to suppress.
         """
         cmd = bytes([ESCAPE, CMD_BUTTON_FLASH, 1 if enabled else 0])
+        self._write(cmd)
+
+    def fire_takeover(self, button: int) -> None:
+        """Fire the firmware ripple animation for *button* on demand.
+
+        Use this when ``button_flash`` is suppressed (because a bridge owns the
+        LEDs) but you still want the satisfying ripple feedback for a specific
+        action — e.g. a destructive button (B4 by positional convention) when
+        the bridge handles the action via pynput rather than letting the
+        firmware HID keymap fire.
+
+        Args:
+            button: 1–4. Out-of-range values are silently ignored by firmware.
+        """
+        if button < 1 or button > 4:
+            return
+        cmd = bytes([ESCAPE, CMD_FIRE_TAKEOVER, button & 0xFF])
+        self._write(cmd)
+
+    def set_slider_enabled(self, enabled: bool) -> None:
+        """Enable or disable the capacitive touch slider's volume injections.
+
+        When disabled, swiping the slider does nothing.  Firmware default is
+        enabled, and this is RAM-only — the slider is back on after every
+        power cycle.
+
+        Args:
+            enabled: ``True`` to enable (firmware default), ``False`` to suppress.
+        """
+        cmd = bytes([ESCAPE, CMD_SET_SLIDER, 1 if enabled else 0])
+        self._write(cmd)
+
+    def set_splash_on_press(self, enabled: bool) -> None:
+        """Enable or disable the interactive splash-on-press animation.
+
+        When enabled, pressing a button during a firmware effect mode fires a
+        ~300 ms localized color-spray animation that captures the pressed LED's
+        current color and sprays outward.  Designed for "RGB toy" / fidget use.
+
+        Firmware default is enabled.  RAM-only — re-applied on every dc29
+        startup if the user has it set in :attr:`Config.splash_on_press`.
+
+        Args:
+            enabled: ``True`` to enable (firmware default), ``False`` to suppress.
+        """
+        cmd = bytes([ESCAPE, CMD_SET_SPLASH, 1 if enabled else 0])
         self._write(cmd)
 
     def set_key(self, button: int, modifier: int, keycode: int) -> None:
@@ -471,11 +634,30 @@ class BadgeAPI:
             n, mod, kc = args
             log.info("Button %d pressed — modifier=0x%02X keycode=0x%02X", n, mod, kc)
             self._state.last_button = n
-            if self.on_button_press is not None:
+            # Local stats — fire-and-forget; never blocks dispatch.
+            try:
+                from dc29.stats import record
+                record.button_press(n)
+            except Exception:
+                pass
+            # Registered handlers (priority order) get first chance.
+            with self._button_handlers_lock:
+                handlers_snapshot = list(self._button_handlers)
+            claimed = False
+            for h in handlers_snapshot:
+                if n in h.owned_buttons:
+                    try:
+                        if h.should_handle(n):
+                            h.handler(n, mod, kc)
+                            claimed = True
+                            break
+                    except Exception:
+                        log.exception("button handler %r raised", h.name)
+            if not claimed and self.on_button_press is not None:
                 try:
                     self.on_button_press(n, mod, kc)
                 except Exception:
-                    log.exception("on_button_press callback raised")
+                    log.exception("on_button_press fallback raised")
             self._fire_state_change()
 
         elif cmd == EVT_KEY_REPLY and len(args) == 3:
