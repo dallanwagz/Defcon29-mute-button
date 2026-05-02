@@ -5,7 +5,7 @@ dc29/tui/app.py — Textual TUI for the DEF CON 29 badge macro-keypad.
 Layout (single screen, tabbed):
 
   ┌─ DC29 Badge  ●  /dev/tty.usbmodem14201 ─────────────── v1.0.0  ?=help  q=quit ─┐
-  │ [1] Dash [2] Keys [3] LEDs [4] Effects [5] WLED [6] Bridges [7] Stats [8] Log │
+  │ [1] Dash [2] Keys [3] WLED [4] Effects [5] Bridges [6] Stats [7] Log [8] LEDs │
   ├─────────────────────────────────────────────────────────────────────────────────┤
   │  (tab content)                                                                  │
   └─────────────────────────────────────────────────────────────────────────────────┘
@@ -306,7 +306,7 @@ class HelpScreen(ModalScreen):
         with Container():
             yield Label("⚡  DC29 Badge TUI  ⚡", classes="help-title")
             yield Rule()
-            yield Label("  [yellow]1-8[/]   Switch tabs (Dashboard / Keys / LEDs / Effects / WLED / Bridges / Stats / Log)", markup=True, classes="help-row")
+            yield Label("  [yellow]1-8[/]   Switch tabs (Dashboard / Keys / WLED / Effects / Bridges / Stats / Log / LEDs)", markup=True, classes="help-row")
             yield Label("  [yellow]r[/]     Rainbow chase effect", markup=True, classes="help-row")
             yield Label("  [yellow]b[/]     Breathe effect", markup=True, classes="help-row")
             yield Label("  [yellow]o[/]     Effect off", markup=True, classes="help-row")
@@ -2246,12 +2246,12 @@ class BadgeTUI(App):
     BINDINGS = [
         Binding("1", "switch_tab('dashboard')", "Dashboard", show=False),
         Binding("2", "switch_tab('keys')", "Keys", show=False),
-        Binding("3", "switch_tab('leds')", "LEDs", show=False),
+        Binding("3", "switch_tab('wled')", "WLED", show=False),
         Binding("4", "switch_tab('effects')", "Effects", show=False),
-        Binding("5", "switch_tab('wled')", "WLED", show=False),
-        Binding("6", "switch_tab('bridges')", "Bridges", show=False),
-        Binding("7", "switch_tab('stats')", "Stats", show=False),
-        Binding("8", "switch_tab('log')", "Log", show=False),
+        Binding("5", "switch_tab('bridges')", "Bridges", show=False),
+        Binding("6", "switch_tab('stats')", "Stats", show=False),
+        Binding("7", "switch_tab('log')", "Log", show=False),
+        Binding("8", "switch_tab('leds')", "LEDs", show=False),
         Binding("r", "rainbow", "Rainbow", show=False),
         Binding("b", "breathe", "Breathe", show=False),
         Binding("o", "effect_off", "Effect Off", show=False),
@@ -2428,18 +2428,18 @@ class BadgeTUI(App):
                 yield DashboardTab()
             with TabPane("Keys [2]", id="keys"):
                 yield KeysTab()
-            with TabPane("LEDs [3]", id="leds"):
-                yield LEDsTab()
+            with TabPane("WLED [3]", id="wled"):
+                yield WledTab()
             with TabPane("Effects [4]", id="effects"):
                 yield EffectsTab()
-            with TabPane("WLED [5]", id="wled"):
-                yield WledTab()
-            with TabPane("Bridges & Inputs [6]", id="bridges"):
+            with TabPane("Bridges & Inputs [5]", id="bridges"):
                 yield BridgesTab()
-            with TabPane("Stats [7]", id="stats"):
+            with TabPane("Stats [6]", id="stats"):
                 yield StatsTab()
-            with TabPane("Log [8]", id="log"):
+            with TabPane("Log [7]", id="log"):
                 yield LogTab()
+            with TabPane("LEDs [8]", id="leds"):
+                yield LEDsTab()
         yield Footer()
 
     # ------------------------------------------------------------------
