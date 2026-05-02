@@ -119,7 +119,7 @@ CMD_SET_EFFECT: int = ord("E")
 ``0x01 'E' n`` — Set the firmware-driven LED effect mode.
 
 Arguments (1 byte):
-  * ``n`` — effect mode: ``0`` = off, ``1`` = rainbow-chase, ``2`` = breathe
+  * ``n`` — effect mode index; see :class:`EffectMode` for the full list (0=off through 18=juggle)
 
 When the firmware is running an effect (mode > 0), Python-side idle
 animations should be suppressed to avoid conflicting LED writes.  The badge
@@ -185,6 +185,24 @@ Arguments (1 byte):
   * ``v`` — ``0`` to disable, ``1`` to enable (firmware default is enabled)
 """
 
+CMD_WLED_SET: int = ord("W")
+"""
+``0x01 'W' speed intensity palette`` — Set the WLED-effect knobs in one shot.
+
+Mirrors WLED's ``/win&SX=&IX=&FP=`` HTTP API.  All three values are written
+atomically to the firmware's segment state, so the next frame of any
+WLED-ported effect (modes 19+) will use the new values.  Effects in the
+hand-rolled range (modes 1–18) ignore these knobs.
+
+Arguments (3 bytes):
+  * ``speed``     — 0–255, controls the timebase for most effects (firmware default 128)
+  * ``intensity`` — 0–255, per-effect "amount" knob (firmware default 128)
+  * ``palette``   — :class:`WledPalette` index; out-of-range values wrap modulo
+    the palette count, so the host doesn't have to track the count itself.
+
+RAM-only: settings reset to defaults on each power-on / firmware boot.
+"""
+
 # ---------------------------------------------------------------------------
 # Badge → host event bytes (the byte that follows ESCAPE)
 # ---------------------------------------------------------------------------
@@ -225,7 +243,7 @@ EVT_EFFECT_MODE: int = ord("V")
 ``0x01 'V' n`` — The firmware LED effect mode changed.
 
 Payload (1 byte):
-  * ``n`` — new effect mode (0=off, 1=rainbow-chase, 2=breathe)
+  * ``n`` — new effect mode index; see :class:`EffectMode` (0=off through 18=juggle)
 
 Emitted when the user triggers a long-press chord or when the mode is changed
 via ``CMD_SET_EFFECT``.
@@ -299,6 +317,84 @@ class EffectMode(IntEnum):
     PARTICLES = 8
     """Two physics particles drifting through the 2x2 LED grid, colors blending on proximity."""
 
+    FIRE = 9
+    """Fire 2012-style flicker — per-LED heat with bottom row burning hotter."""
+
+    LIGHTNING = 10
+    """Long dark gaps punctuated by bright white flash bursts on random LEDs."""
+
+    POLICE = 11
+    """Emergency-vehicle strobe — left half (LED1,3) red, right half (LED2,4) blue."""
+
+    PLASMA = 12
+    """Smoothly-blending hue field — each LED is the average of two sine waves."""
+
+    HEARTBEAT = 13
+    """Lub-dub red double-pulse with rest gap — like a resting heartbeat."""
+
+    AURORA = 14
+    """Slow drift through cool-spectrum hues (cyan→blue→purple), per-LED phase offsets."""
+
+    CONFETTI = 15
+    """Sparkle and fade — random LEDs flash random hues against a fading background."""
+
+    STROBE = 16
+    """Rapid full-on / full-off across all LEDs with slow hue cycle."""
+
+    METEOR = 17
+    """Bright LED travels 1→4 leaving a fading trail, then restarts with a new hue."""
+
+    JUGGLE = 18
+    """Three sine-wave dots at different speeds and base hues, blended across the LEDs."""
+
+    BREATH_WLED = 19
+    """WLED port: ``mode_breath`` — palette breathing, 30..255 envelope, sin8-driven."""
+
+    PRIDE = 20
+    """WLED port: ``mode_pride_2015`` — Mark Kriegsman's hue+brightness rainbow waves."""
+
+    PACIFICA = 21
+    """WLED port: ``mode_pacifica`` — layered ocean palette with whitecaps."""
+
+    RUNNING_LIGHTS = 22
+    """WLED port: ``mode_running_lights`` — sine-wave pulse traveling across the strip."""
+
+    JUGGLE_WLED = 23
+    """WLED port: FastLED ``juggle()`` — 8 sine-wave dots at coprime BPMs, blended."""
+
+    CONFETTI_WLED = 24
+    """WLED port: Mark Kriegsman ``confetti()`` — random sparkles over a slowly-drifting hue."""
+
+    RAINBOW_WLED = 25
+    """WLED port: ``mode_rainbow`` — whole strip cycles through the active palette together."""
+
+    PALETTE_FLOW = 26
+    """Palette readout scrolling along the strip — cleanest showcase of a new palette."""
+
+    BPM = 27
+    """WLED port: ``mode_bpm`` — Mark Kriegsman BPM-driven palette breath."""
+
+    GLITTER = 28
+    """Palette scroll background with random white sparkles; intensity controls density."""
+
+    COLOR_WIPE = 29
+    """WLED port: palette color fills the strip, then a black wipe sweeps it back, repeat."""
+
+    TWO_DOTS = 30
+    """WLED port: ``mode_two_dots`` — two palette-colored dots oscillating at slightly different rates."""
+
+    LAKE = 31
+    """WLED port: ``mode_lake`` — interfering wave fields of palette color, like a still lake."""
+
+    DANCING_SHADOWS = 32
+    """Three palette-colored spotlights drift independently, blending where they overlap."""
+
+    COLORTWINKLES = 33
+    """WLED port: ``mode_colortwinkles`` — palette pixels twinkle on and off independently."""
+
+    SINELON = 34
+    """WLED port: ``mode_sinelon`` — palette dot traces a sine path leaving a fade trail."""
+
 
 EFFECT_NAMES: dict[int, str] = {
     EffectMode.OFF: "off",
@@ -310,6 +406,32 @@ EFFECT_NAMES: dict[int, str] = {
     EffectMode.THEATER: "theater",
     EffectMode.CYLON: "cylon",
     EffectMode.PARTICLES: "particles",
+    EffectMode.FIRE: "fire",
+    EffectMode.LIGHTNING: "lightning",
+    EffectMode.POLICE: "police",
+    EffectMode.PLASMA: "plasma",
+    EffectMode.HEARTBEAT: "heartbeat",
+    EffectMode.AURORA: "aurora",
+    EffectMode.CONFETTI: "confetti",
+    EffectMode.STROBE: "strobe",
+    EffectMode.METEOR: "meteor",
+    EffectMode.JUGGLE: "juggle",
+    EffectMode.BREATH_WLED: "breath-wled",
+    EffectMode.PRIDE: "pride",
+    EffectMode.PACIFICA: "pacifica",
+    EffectMode.RUNNING_LIGHTS: "running-lights",
+    EffectMode.JUGGLE_WLED: "juggle-wled",
+    EffectMode.CONFETTI_WLED: "confetti-wled",
+    EffectMode.RAINBOW_WLED: "rainbow-wled",
+    EffectMode.PALETTE_FLOW: "palette-flow",
+    EffectMode.BPM: "bpm",
+    EffectMode.GLITTER: "glitter",
+    EffectMode.COLOR_WIPE: "color-wipe",
+    EffectMode.TWO_DOTS: "two-dots",
+    EffectMode.LAKE: "lake",
+    EffectMode.DANCING_SHADOWS: "dancing-shadows",
+    EffectMode.COLORTWINKLES: "colortwinkles",
+    EffectMode.SINELON: "sinelon",
 }
 """Human-readable names for each :class:`EffectMode`."""
 
@@ -323,8 +445,87 @@ EFFECT_DESCRIPTIONS: dict[int, str] = {
     EffectMode.THEATER:       "Marquee-style alternating dot pattern shifting across the LEDs.",
     EffectMode.CYLON:         "Knight Rider sweep — a bright LED bounces back and forth.",
     EffectMode.PARTICLES:     "Two physics-driven particles drift through the 2x2 grid, colors blending and bouncing off walls.",
+    EffectMode.FIRE:          "Flickering flames — each LED holds its own heat value, bottom row burns hotter.",
+    EffectMode.LIGHTNING:     "Mostly dark, with sudden bursts of bright white flashes on random LEDs.",
+    EffectMode.POLICE:        "Emergency strobe — left side red, right side blue, alternating with a double-flash per side.",
+    EffectMode.PLASMA:         "Smoothly-blending hue field; each LED averages two sine waves at different frequencies.",
+    EffectMode.HEARTBEAT:     "Lub-dub red double-pulse with a long rest gap — feels like a resting heartbeat.",
+    EffectMode.AURORA:        "Slow drift through cool blues, cyans, and purples — each LED swirls on its own phase.",
+    EffectMode.CONFETTI:      "Random sparkles fall on random LEDs and fade out over the next few ticks.",
+    EffectMode.STROBE:        "Rapid full-on / full-off flashing across all LEDs while the strobe color slowly hue-cycles.",
+    EffectMode.METEOR:        "A bright LED travels across the row leaving a fading trail behind it.",
+    EffectMode.JUGGLE:        "Three sine-wave dots at different speeds and base hues, summed and blended across the LEDs.",
+    EffectMode.BREATH_WLED:    "WLED port — palette breathing with a 30..255 sine envelope, like the badge taking slow breaths.",
+    EffectMode.PRIDE:          "WLED port (Pride 2015) — slowly-shifting hue and brightness waves; classic Mark Kriegsman rainbow.",
+    EffectMode.PACIFICA:       "WLED port — layered ocean-palette waves with brighter whitecaps where waves overlap.",
+    EffectMode.RUNNING_LIGHTS: "WLED port — a sine-wave pulse travels across the strip, palette-colored.",
+    EffectMode.JUGGLE_WLED:    "WLED port (FastLED juggle) — 8 colorful dots tracing sine paths at coprime BPMs.",
+    EffectMode.CONFETTI_WLED:  "WLED port (FastLED confetti) — random sparkles over a slowly-drifting base hue.",
+    EffectMode.RAINBOW_WLED:    "WLED port (rainbow) — whole strip cycles through the active palette together.",
+    EffectMode.PALETTE_FLOW:    "Pure palette readout scrolling along the strip — cleanest way to see a new palette.",
+    EffectMode.BPM:             "WLED port (Mark Kriegsman BPM) — palette breathes with a sin-shaped brightness pulse.",
+    EffectMode.GLITTER:         "Palette scroll with random white sparkles; intensity controls sparkle density.",
+    EffectMode.COLOR_WIPE:      "WLED port — palette color fills the strip, then a black wipe sweeps it back to off, repeat.",
+    EffectMode.TWO_DOTS:        "WLED port — two palette-colored dots oscillating at slightly different rates over a fading background.",
+    EffectMode.LAKE:            "WLED port — two interfering wave fields of palette color, like reflections on a still lake.",
+    EffectMode.DANCING_SHADOWS: "Three palette-colored spotlights drift independently across the strip and blend where they overlap.",
+    EffectMode.COLORTWINKLES:   "WLED port — palette pixels twinkle on and off independently with random spawn timing.",
+    EffectMode.SINELON:         "WLED port — a palette-colored dot traces a sine path through the strip, leaving a fade trail.",
 }
 """Short human-readable descriptions for the TUI scene grid + ``dc29 set-effect --help``."""
+
+
+# ---------------------------------------------------------------------------
+# WLED-effect color profiles (palettes) and runtime knobs
+# ---------------------------------------------------------------------------
+
+
+class WledPalette(IntEnum):
+    """Color palettes available to the WLED-ported effects (modes 19+).
+
+    Set via :data:`CMD_WLED_SET` (``0x01 'W' speed intensity palette``).  The
+    indices match the firmware's ``palette_table[]`` in ``wled_fx.c`` — keep
+    them in lockstep.  Effects in the hand-rolled range (modes 1–18) ignore
+    the palette setting; only WLED-ported effects honor it.
+    """
+
+    RAINBOW = 0
+    """Full-spectrum rainbow — FastLED ``RainbowColors_p``."""
+
+    HEAT = 1
+    """Black → red → orange → yellow → white — FastLED ``HeatColors_p``, classic flame palette."""
+
+    OCEAN = 2
+    """Deep navy → cyan → sky blue — cool, watery palette."""
+
+    LAVA = 3
+    """Black → deep red → orange → yellow → white — like molten lava cooling."""
+
+    PACIFICA = 4
+    """Hand-tuned ocean palette from WLED's ``mode_pacifica`` (FX.cpp:4194)."""
+
+    SUNSET = 5
+    """Yellow → orange → magenta → indigo, like a real sunset gradient."""
+
+    FOREST = 6
+    """Deep greens with brown highlights — forest canopy at midday."""
+
+    PARTY = 7
+    """Saturated pinks, oranges, yellows, blues — FastLED-style party palette."""
+
+
+WLED_PALETTE_NAMES: dict[int, str] = {
+    WledPalette.RAINBOW:  "rainbow",
+    WledPalette.HEAT:     "heat",
+    WledPalette.OCEAN:    "ocean",
+    WledPalette.LAVA:     "lava",
+    WledPalette.PACIFICA: "pacifica",
+    WledPalette.SUNSET:   "sunset",
+    WledPalette.FOREST:   "forest",
+    WledPalette.PARTY:    "party",
+}
+"""Lower-case slug names for each :class:`WledPalette`, used by the TUI and CLI."""
+
 
 # ---------------------------------------------------------------------------
 # HID modifier byte constants

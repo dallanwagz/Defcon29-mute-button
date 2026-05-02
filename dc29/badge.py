@@ -45,6 +45,7 @@ from dc29.protocol import (
     CMD_SET_SPLASH,
     CMD_SET_KEY,
     CMD_QUERY_KEY,
+    CMD_WLED_SET,
     EVT_BUTTON,
     EVT_KEY_REPLY,
     EVT_KEY_ACK,
@@ -337,9 +338,41 @@ class BadgeAPI:
         """Set the firmware-driven LED effect mode.
 
         Args:
-            mode: 0=off, 1=rainbow-chase, 2=breathe.
+            mode: see :class:`~dc29.protocol.EffectMode` (0=off through 34=sinelon).
         """
         cmd = bytes([ESCAPE, CMD_SET_EFFECT, mode & 0xFF])
+        self._write(cmd)
+
+    def set_wled(
+        self,
+        speed: int = 128,
+        intensity: int = 128,
+        palette: int = 0,
+    ) -> None:
+        """Set the WLED-effect runtime knobs (modes 19+).
+
+        Mirrors WLED's ``/win&SX=&IX=&FP=`` HTTP API: speed controls the
+        timebase, intensity is the per-effect "amount" (fade rate, sparkle
+        density, wave width depending on the effect), and palette picks one
+        of :class:`~dc29.protocol.WledPalette`.
+
+        Has no effect on hand-rolled modes 1–18.  Settings are RAM-only and
+        reset to defaults (speed=128, intensity=128, palette=RAINBOW) on
+        firmware boot.
+
+        Args:
+            speed:     0–255, controls timebase for most effects.
+            intensity: 0–255, per-effect "amount" knob.
+            palette:   :class:`~dc29.protocol.WledPalette` index; out-of-range
+                values wrap modulo the firmware's palette count.
+        """
+        cmd = bytes([
+            ESCAPE,
+            CMD_WLED_SET,
+            speed & 0xFF,
+            intensity & 0xFF,
+            palette & 0xFF,
+        ])
         self._write(cmd)
 
     # ------------------------------------------------------------------

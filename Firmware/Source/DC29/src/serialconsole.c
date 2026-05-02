@@ -8,6 +8,7 @@
 #include "rww_eeprom.h"
 #include "pwm.h"
 #include "keys.h"
+#include "wled_fx.h"
 
 extern bool main_b_cdc_enable;
 
@@ -127,6 +128,7 @@ void updateSerialConsole(void){
 				if(data == 'T'){ escape_args_needed = 1; escape_state = 2; return; }
 				if(data == 'S'){ escape_args_needed = 1; escape_state = 2; return; }
 				if(data == 'I'){ escape_args_needed = 1; escape_state = 2; return; }
+				if(data == 'W'){ escape_args_needed = 3; escape_state = 2; return; }
 				return;
 			}
 			if(escape_state == 2){
@@ -173,6 +175,13 @@ void updateSerialConsole(void){
 					slider_enabled = (escape_args[0] != 0);
 				} else if(escape_cmd == 'I'){
 					splash_on_press_enabled = (escape_args[0] != 0);
+				} else if(escape_cmd == 'W'){
+					/* WLED knobs: speed, intensity, palette.  Mirrors WLED's
+					 * /win&SX=&IX=&FP= API.  Palette wraps modulo WLED_PAL_COUNT
+					 * so out-of-range values from the host don't crash effects. */
+					wled_seg.speed     = escape_args[0];
+					wled_seg.intensity = escape_args[1];
+					wled_seg.palette   = (uint8_t)(escape_args[2] % WLED_PAL_COUNT);
 				}
 				return;
 			}
