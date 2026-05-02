@@ -125,7 +125,7 @@ CFLAGS += -pipe
 # GCC 13 emits new warnings on old ASF code (register keyword, implicit-int
 # patterns, etc.). Suppress all to get a clean first build; re-enable
 # selectively once confirmed working.
-CFLAGS += -w
+CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-pointer-sign -Wno-unused-but-set-variable -Wno-unused-function
 
 # ---------------------------------------------------------------------------
 # Linker flags

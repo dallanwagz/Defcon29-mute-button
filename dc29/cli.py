@@ -166,7 +166,7 @@ def _parse_keycode(value: str) -> int:
 
 
 def _parse_effect_mode(value: str) -> int:
-    """Parse an effect mode argument: 0/1/2 or off/rainbow/breathe."""
+    """Parse an effect mode argument: integer 0..34 or any name from EFFECT_NAMES."""
     try:
         mode = int(value, 0)
         if mode not in EFFECT_NAMES:
@@ -183,7 +183,7 @@ def _parse_effect_mode(value: str) -> int:
         return EffectMode.RAINBOW_CHASE
     typer.echo(
         f"Unknown effect mode {value!r}.  "
-        f"Use 0/1/2 or {'/'.join(EFFECT_NAMES.values())}.",
+        f"Use a number 0..{max(EFFECT_NAMES)} or one of: {', '.join(EFFECT_NAMES.values())}.",
         err=True,
     )
     raise typer.Exit(1)
@@ -888,8 +888,8 @@ def scene_save(
     firmware: Optional[str] = typer.Option(
         None, "--firmware",
         help=(
-            "Firmware effect-mode name (off/rainbow-chase/breathe/wipe/twinkle/"
-            "gradient/theater/cylon) or numeric mode 0..7."
+            "Firmware effect-mode name or numeric mode 0..34. "
+            "See `dc29 list-effects` for the full catalog."
         ),
     ),
     description: str = typer.Option("", "--description", "-d"),
@@ -1722,7 +1722,7 @@ def set_led(
 def set_effect(
     mode: str = typer.Argument(
         ...,
-        help="Effect mode: 0/off, 1/rainbow-chase, or 2/breathe.",
+        help="Effect mode: integer 0..34 or any name from EFFECT_NAMES (off, rainbow-chase, pacifica, sinelon, etc.).",
         metavar="MODE",
     ),
     port: Optional[str] = typer.Option(

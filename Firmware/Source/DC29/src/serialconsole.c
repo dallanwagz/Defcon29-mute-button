@@ -21,15 +21,16 @@ extern bool main_b_cdc_enable;
      0x01 L n r g b  -> set LED n (1-4) color immediately (not saved to EEPROM)
      0x01 P r1 g1 b1 r2 g2 b2 r3 g3 b3 r4 g4 b4 -> paint all 4 LEDs atomically (12 bytes)
      0x01 F 0/1      -> disable/enable button press takeover animation (RAM only, default on)
-     0x01 E n        -> set LED effect mode (0=off, 1=rainbow, 2=breathe, 3=wipe, 4=twinkle, 5=gradient, 6=theater, 7=cylon)
+     0x01 E n        -> set LED effect mode (0..34; see dc29/protocol.py EffectMode for the full list — modes 1..18 hand-rolled, 19..34 WLED ports)
      0x01 T n        -> trigger takeover ripple animation for button n (1-4) on demand
      0x01 S 0/1      -> disable/enable capacitive touch slider (volume up/down) (RAM only, default on)
      0x01 I 0/1      -> disable/enable interactive splash on button press (RAM only, default on)
+     0x01 W s i p    -> set WLED knobs: speed, intensity, palette (3 bytes; affects modes 19+ only; mirrors WLED /win&SX=&IX=&FP=)
    Commands from badge to host:
      0x01 B n m k    -> button n was pressed; first keymap entry is modifier m, keycode k
      0x01 R n m k    -> reply to Q query
      0x01 A n        -> ACK after K set-keymap command
-     0x01 V n        -> effect mode changed (n = 0/1/2)
+     0x01 V n        -> effect mode changed (n = 0..34)
      0x01 C n        -> chord fired (n=1 short, n=2 long)
    0x01 never appears in menu traffic so this channel is safe to use concurrently. */
 #define STATUS_ESCAPE 0x01

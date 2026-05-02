@@ -170,7 +170,7 @@ class FirmwarePayload:
     """Point the badge at a built-in firmware effect mode."""
 
     mode: int
-    """An :class:`~dc29.protocol.EffectMode` value (0 through 7)."""
+    """An :class:`~dc29.protocol.EffectMode` value (0 through 34 — see EFFECT_NAMES for the full list)."""
 
 
 @dataclass
