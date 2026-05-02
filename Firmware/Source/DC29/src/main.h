@@ -157,7 +157,7 @@ void configure_rtc_callbacks(void);
  */
 void configure_rtc_count(void);
 
-#define NUM_EFFECT_MODES 9   /* 0=off, 1=rainbow-chase, 2=breathe, 3=wipe, 4=twinkle, 5=gradient, 6=theater, 7=cylon, 8=particles */
+#define NUM_EFFECT_MODES 35  /* 0=off, 1..18=hand-rolled effects, 19..34=WLED ports.  See dc29/protocol.py EffectMode for the canonical list. */
 
 void set_effect_mode(uint8_t mode);
 

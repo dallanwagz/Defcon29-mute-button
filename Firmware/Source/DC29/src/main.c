@@ -47,6 +47,7 @@
 #include <rww_eeprom.h>
 #include "keys.h"
 #include "serialconsole.h"
+#include "wled_fx.h"
 
 
 
@@ -110,6 +111,16 @@ volatile bool button4 = false;
 #define EFFECT_THEATER_STEP_MS  120   /* ms per step for theater-chase mode */
 #define EFFECT_CYLON_STEP_MS     90   /* ms per step for cylon sweep */
 #define EFFECT_PARTICLES_STEP_MS 16   /* ~60 fps physics tick */
+#define EFFECT_FIRE_STEP_MS      35   /* heat-cell flicker tick */
+#define EFFECT_LIGHTNING_STEP_MS 16   /* state-machine tick for flash bursts */
+#define EFFECT_POLICE_STEP_MS    70   /* alternating-side strobe */
+#define EFFECT_PLASMA_STEP_MS    25   /* summed-sine plasma */
+#define EFFECT_HEARTBEAT_STEP_MS 16   /* time-driven lub-dub */
+#define EFFECT_AURORA_STEP_MS    50   /* slow cool-spectrum drift */
+#define EFFECT_CONFETTI_STEP_MS  70   /* fade-and-sparkle */
+#define EFFECT_STROBE_STEP_MS    60   /* rapid full on/off */
+#define EFFECT_METEOR_STEP_MS    70   /* head moves, trail fades */
+#define EFFECT_JUGGLE_STEP_MS    25   /* 3 sine dots blended */
 volatile uint32_t lastButton1Press = 0;
 volatile uint32_t lastButton2Press = 0;
 volatile uint32_t lastButton3Press = 0;
@@ -676,6 +687,14 @@ void configure_rtc_count(void)
  *
  */
 
+/* 16-entry sine-shaped LUT, period 256, range 0..255.  Used by plasma /
+ * aurora / juggle effects.  Stored in flash; ~16 bytes total. */
+static const uint8_t sin8_lut[16] = {
+	128, 177, 219, 246, 255, 246, 219, 177,
+	128,  79,  37,  10,   0,  10,  37,  79
+};
+static uint8_t fwsin8(uint8_t t){ return sin8_lut[(t >> 4) & 0x0F]; }
+
 /* Full-saturation HSV→RGB. h/v both 0-255. */
 static void hsv_to_rgb(uint8_t h, uint8_t v, uint8_t *r, uint8_t *g, uint8_t *b){
 	uint8_t region = h / 43;
@@ -698,6 +717,9 @@ void set_effect_mode(uint8_t mode){
 	effect_step  = 0;
 	effect_hue   = 0;
 	effect_timer = millis;
+	/* Clear WLED-effect SEGENV so each ported effect's `if (SEGENV.call == 0)`
+	 * one-time-init block fires on its first frame after a mode change. */
+	wled_fx_reset_state();
 	if(mode == 0){
 		led_set_resting_color(1, led1color);
 		led_set_resting_color(2, led2color);
@@ -886,6 +908,256 @@ static void update_effects(void){
 			}
 			led_set_color(i + 1, color);
 		}
+
+	} else if(effect_mode == 9){
+		/* Fire: per-LED "heat" drifts toward a target with a random walk.
+		   Bottom row (LED3, LED4) targets hotter than top (LED1, LED2),
+		   giving a flame-base feel even on a 2x2 grid.  Heat→color follows
+		   the classic black→red→orange→yellow→white ramp. */
+		if((now - effect_timer) < EFFECT_FIRE_STEP_MS) return;
+		effect_timer = now;
+		static uint8_t heat[4] = {0, 0, 0, 0};
+		static uint8_t fire_lfsr = 0xA5;
+		for(uint8_t i = 0; i < 4; i++){
+			fire_lfsr ^= fire_lfsr << 3; fire_lfsr ^= fire_lfsr >> 5; fire_lfsr ^= fire_lfsr << 1;
+			if(fire_lfsr == 0) fire_lfsr = 1;
+			uint8_t target = (i >= 2) ? 200 : 90;          /* bottom row burns hotter */
+			int16_t jitter = (int16_t)(fire_lfsr & 0x3F) - 32;
+			int16_t h = (int16_t)heat[i] + jitter;
+			h += ((int16_t)target - h) >> 2;                /* drift toward target */
+			if(h < 0) h = 0;
+			if(h > 255) h = 255;
+			heat[i] = (uint8_t)h;
+			uint8_t r, g, b;
+			if(heat[i] < 85){       r = heat[i] * 3;        g = 0;                       b = 0; }
+			else if(heat[i] < 170){ r = 255;                g = (heat[i] - 85)  * 3;     b = 0; }
+			else {                  r = 255;                g = 255;                     b = (heat[i] - 170) * 3; }
+			uint8_t color[3] = {r, g, b};
+			led_set_color(i + 1, color);
+		}
+
+	} else if(effect_mode == 10){
+		/* Lightning: long dark gaps punctuated by short bursts of bright white
+		   flashes on random LEDs.  Time-driven state machine — phase_until
+		   tracks when the current ON or OFF segment ends. */
+		if((now - effect_timer) < EFFECT_LIGHTNING_STEP_MS) return;
+		effect_timer = now;
+		static uint32_t next_flash_at = 0;
+		static uint32_t phase_until   = 0;
+		static uint8_t  flashes_left  = 0;
+		static uint8_t  flash_mask    = 0;
+		static uint8_t  in_flash      = 0;
+		static uint8_t  lit_lfsr      = 0x37;
+
+		lit_lfsr ^= lit_lfsr << 3; lit_lfsr ^= lit_lfsr >> 5; lit_lfsr ^= lit_lfsr << 1;
+		if(lit_lfsr == 0) lit_lfsr = 1;
+
+		if(next_flash_at == 0 || (int32_t)(now - next_flash_at) > 60000){
+			/* First entry, or stale timestamp from a previous run — reseed. */
+			next_flash_at = now + 800 + (lit_lfsr & 0x7F) * 8;
+		}
+		if(flashes_left == 0 && (int32_t)(now - next_flash_at) >= 0){
+			flashes_left = 1 + (lit_lfsr & 0x03);   /* 1..4 flashes per burst */
+			in_flash = 0;
+			phase_until = now;
+		}
+		if(flashes_left > 0 && (int32_t)(now - phase_until) >= 0){
+			in_flash = !in_flash;
+			if(in_flash){
+				flash_mask = lit_lfsr & 0x0F;
+				if(flash_mask == 0) flash_mask = 1 << (lit_lfsr & 0x03);
+				phase_until = now + 30 + (lit_lfsr & 0x1F);    /* 30-61 ms ON */
+			} else {
+				flashes_left--;
+				phase_until = now + 50 + (lit_lfsr & 0x3F);     /* 50-113 ms OFF */
+				if(flashes_left == 0){
+					next_flash_at = now + 800 + (lit_lfsr & 0x7F) * 8;
+				}
+			}
+		}
+		uint8_t off[3]   = {0, 0, 0};
+		uint8_t white[3] = {255, 255, 255};
+		for(uint8_t i = 0; i < 4; i++){
+			led_set_color(i + 1, (in_flash && (flash_mask & (1 << i))) ? white : off);
+		}
+
+	} else if(effect_mode == 11){
+		/* Police strobe: left half (LED1,LED3) red, right half (LED2,LED4) blue,
+		   each side double-flashes before handing off to the other.
+		   8-step cycle: phases 0,2 = left red ON; 1,3 = all off; 4,6 = right blue ON; 5,7 = all off. */
+		if((now - effect_timer) < EFFECT_POLICE_STEP_MS) return;
+		effect_timer = now;
+		uint8_t phase = effect_step & 0x07;
+		uint8_t red[3]  = {255,   0,   0};
+		uint8_t blue[3] = {  0,   0, 255};
+		uint8_t off[3]  = {  0,   0,   0};
+		uint8_t left  = (phase < 4)  && ((phase & 0x01) == 0);
+		uint8_t right = (phase >= 4) && ((phase & 0x01) == 0);
+		led_set_color(1, left  ? red  : off);
+		led_set_color(3, left  ? red  : off);
+		led_set_color(2, right ? blue : off);
+		led_set_color(4, right ? blue : off);
+		effect_step++;
+
+	} else if(effect_mode == 12){
+		/* Plasma: each LED's hue is the average of two sines at different
+		   frequencies and per-LED phase offsets.  Smooth, never-quite-repeats. */
+		if((now - effect_timer) < EFFECT_PLASMA_STEP_MS) return;
+		effect_timer = now;
+		static const uint8_t plasma_phase[4] = {0, 64, 192, 128};
+		uint8_t t = effect_hue;
+		for(uint8_t i = 0; i < 4; i++){
+			uint8_t a = fwsin8(t + plasma_phase[i]);
+			uint8_t b = fwsin8((t << 1) + plasma_phase[i] + 96);
+			uint8_t hue = (uint8_t)(((uint16_t)a + b) >> 1);
+			uint8_t cr, cg, cb;
+			hsv_to_rgb(hue, 230, &cr, &cg, &cb);
+			uint8_t color[3] = {cr, cg, cb};
+			led_set_color(i + 1, color);
+		}
+		effect_hue += 3;
+
+	} else if(effect_mode == 13){
+		/* Heartbeat: lub-dub red pulse with rest gap.  Brightness profile is
+		   driven from elapsed-time-mod-period so it's frame-rate independent. */
+		if((now - effect_timer) < EFFECT_HEARTBEAT_STEP_MS) return;
+		effect_timer = now;
+		uint16_t t = (uint16_t)(now % 1100);
+		uint8_t bright;
+		if      (t < 120) bright = (uint8_t)(t * 255 / 120);                 /* lub rise */
+		else if (t < 220) bright = (uint8_t)(255 - (t - 120) * 200 / 100);    /* lub fall */
+		else if (t < 280) bright = (uint8_t)(55  + (t - 220) * 200 / 60);     /* dub rise */
+		else if (t < 400) bright = (uint8_t)(255 - (t - 280) * 255 / 120);    /* dub fall */
+		else              bright = 0;                                          /* rest */
+		uint8_t cr, cg, cb;
+		hsv_to_rgb(0, bright, &cr, &cg, &cb);
+		uint8_t color[3] = {cr, cg, cb};
+		led_set_color(1, color); led_set_color(2, color);
+		led_set_color(3, color); led_set_color(4, color);
+
+	} else if(effect_mode == 14){
+		/* Aurora: slow drift through cool-spectrum hues (cyan→blue→purple).
+		   Each LED has its own phase offset so colors swirl independently. */
+		if((now - effect_timer) < EFFECT_AURORA_STEP_MS) return;
+		effect_timer = now;
+		static const uint8_t aurora_phase[4] = {0, 80, 160, 40};
+		for(uint8_t i = 0; i < 4; i++){
+			uint8_t s   = fwsin8(effect_hue + aurora_phase[i]);
+			uint8_t hue = 100 + (uint8_t)(((uint16_t)s * 110) >> 8);   /* 100..210 */
+			uint8_t bright = 160 + (s >> 2);                            /* gentle modulation */
+			uint8_t cr, cg, cb;
+			hsv_to_rgb(hue, bright, &cr, &cg, &cb);
+			uint8_t color[3] = {cr, cg, cb};
+			led_set_color(i + 1, color);
+		}
+		effect_hue += 1;
+
+	} else if(effect_mode == 15){
+		/* Confetti: every tick all LEDs fade slightly; with ~50% probability
+		   one random LED gets a fresh full-bright random-hue sparkle.  Local
+		   RGB shadow because led_set_color doesn't expose the current value. */
+		if((now - effect_timer) < EFFECT_CONFETTI_STEP_MS) return;
+		effect_timer = now;
+		static uint8_t conf[4][3] = {{0,0,0},{0,0,0},{0,0,0},{0,0,0}};
+		static uint8_t conf_lfsr = 0xC3;
+		conf_lfsr ^= conf_lfsr << 3; conf_lfsr ^= conf_lfsr >> 5; conf_lfsr ^= conf_lfsr << 1;
+		if(conf_lfsr == 0) conf_lfsr = 1;
+		for(uint8_t i = 0; i < 4; i++){
+			conf[i][0] = (uint8_t)(((uint16_t)conf[i][0] * 232) >> 8);
+			conf[i][1] = (uint8_t)(((uint16_t)conf[i][1] * 232) >> 8);
+			conf[i][2] = (uint8_t)(((uint16_t)conf[i][2] * 232) >> 8);
+		}
+		if(conf_lfsr & 0x80){
+			uint8_t which = conf_lfsr & 0x03;
+			uint8_t hue   = effect_hue + (conf_lfsr & 0x7F);
+			hsv_to_rgb(hue, 255, &conf[which][0], &conf[which][1], &conf[which][2]);
+		}
+		for(uint8_t i = 0; i < 4; i++) led_set_color(i + 1, conf[i]);
+		effect_hue += 1;
+
+	} else if(effect_mode == 16){
+		/* Strobe: rapid full-on / full-off across all LEDs with slow hue cycle. */
+		if((now - effect_timer) < EFFECT_STROBE_STEP_MS) return;
+		effect_timer = now;
+		uint8_t cr, cg, cb;
+		hsv_to_rgb(effect_hue, 255, &cr, &cg, &cb);
+		uint8_t on[3]  = {cr, cg, cb};
+		uint8_t off[3] = {0, 0, 0};
+		uint8_t lit = ((effect_step & 0x01) == 0);
+		led_set_color(1, lit ? on : off);
+		led_set_color(2, lit ? on : off);
+		led_set_color(3, lit ? on : off);
+		led_set_color(4, lit ? on : off);
+		effect_step++;
+		if((effect_step & 0x07) == 0) effect_hue += 13;
+
+	} else if(effect_mode == 17){
+		/* Meteor: a bright LED travels 1→2→3→4 leaving a fading trail.
+		   After exiting LED 4, 4 more ticks of pure decay let the trail fade,
+		   then restart with new hue.  effect_step low 3 bits = position 0..7. */
+		if((now - effect_timer) < EFFECT_METEOR_STEP_MS) return;
+		effect_timer = now;
+		static uint8_t mtrail[4] = {0, 0, 0, 0};
+		for(uint8_t i = 0; i < 4; i++){
+			mtrail[i] = (uint8_t)(((uint16_t)mtrail[i] * 200) >> 8);   /* ~78% decay */
+		}
+		uint8_t pos = effect_step & 0x07;
+		if(pos < 4) mtrail[pos] = 255;
+		uint8_t cr, cg, cb;
+		hsv_to_rgb(effect_hue, 240, &cr, &cg, &cb);
+		for(uint8_t i = 0; i < 4; i++){
+			uint8_t color[3] = {
+				(uint8_t)(((uint16_t)cr * mtrail[i]) >> 8),
+				(uint8_t)(((uint16_t)cg * mtrail[i]) >> 8),
+				(uint8_t)(((uint16_t)cb * mtrail[i]) >> 8),
+			};
+			led_set_color(i + 1, color);
+		}
+		effect_step++;
+		if((effect_step & 0x07) == 0) effect_hue += 32;
+
+	} else if(effect_mode == 18){
+		/* Juggle: 3 sine-wave dots with different speeds and base hues, each
+		   projected onto the 4-LED line and blended with linear-falloff weight.
+		   Inspired by FastLED's juggle() — layered, never-quite-periodic. */
+		if((now - effect_timer) < EFFECT_JUGGLE_STEP_MS) return;
+		effect_timer = now;
+		static const uint8_t dot_speed[3]    = {3, 5, 7};
+		static const uint8_t dot_hue_base[3] = {0, 96, 176};
+		uint8_t t = effect_hue;
+		uint16_t sum_r[4] = {0, 0, 0, 0};
+		uint16_t sum_g[4] = {0, 0, 0, 0};
+		uint16_t sum_b[4] = {0, 0, 0, 0};
+		for(uint8_t d = 0; d < 3; d++){
+			uint8_t pos = fwsin8((uint8_t)(t * dot_speed[d]));   /* 0..255 */
+			uint8_t p   = (uint8_t)(((uint16_t)pos * 192) >> 8); /* 0..192 */
+			uint8_t cr, cg, cb;
+			hsv_to_rgb((uint8_t)(dot_hue_base[d] + t), 255, &cr, &cg, &cb);
+			for(uint8_t i = 0; i < 4; i++){
+				uint8_t led_p = i * 64;
+				uint8_t dist  = (p > led_p) ? (p - led_p) : (led_p - p);
+				if(dist < 64){
+					uint16_t w = 64 - dist;   /* 1..64 */
+					sum_r[i] += ((uint16_t)cr * w) >> 6;
+					sum_g[i] += ((uint16_t)cg * w) >> 6;
+					sum_b[i] += ((uint16_t)cb * w) >> 6;
+				}
+			}
+		}
+		for(uint8_t i = 0; i < 4; i++){
+			if(sum_r[i] > 255) sum_r[i] = 255;
+			if(sum_g[i] > 255) sum_g[i] = 255;
+			if(sum_b[i] > 255) sum_b[i] = 255;
+			uint8_t color[3] = {(uint8_t)sum_r[i], (uint8_t)sum_g[i], (uint8_t)sum_b[i]};
+			led_set_color(i + 1, color);
+		}
+		effect_hue += 1;
+
+	} else if(effect_mode >= 19 && effect_mode < 19 + WLED_FX_COUNT){
+		/* WLED-ported effect modes 19..(19+WLED_FX_COUNT-1).  See wled_fx.c
+		 * for the dispatch table.  The shim handles its own ~60 fps gate
+		 * and SEGENV.call counter; we just route the mode index. */
+		wled_fx_dispatch((uint8_t)(effect_mode - 19));
 	}
 }
 
