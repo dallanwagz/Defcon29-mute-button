@@ -5,13 +5,13 @@ dc29/tui/app.py — Textual TUI for the DEF CON 29 badge macro-keypad.
 Layout (single screen, tabbed):
 
   ┌─ DC29 Badge  ●  /dev/tty.usbmodem14201 ─────────────── v1.0.0  ?=help  q=quit ─┐
-  │ [1] Dashboard  [2] Keys  [3] LEDs  [4] Effects  [5] Log                         │
+  │ [1] Dash [2] Keys [3] LEDs [4] Effects [5] WLED [6] Bridges [7] Stats [8] Log │
   ├─────────────────────────────────────────────────────────────────────────────────┤
   │  (tab content)                                                                  │
   └─────────────────────────────────────────────────────────────────────────────────┘
 
 Keyboard shortcuts (global):
-  1-5   Switch tabs
+  1-8   Switch tabs
   r     Rainbow chase effect
   b     Breathe effect
   o     Effect off
@@ -306,7 +306,7 @@ class HelpScreen(ModalScreen):
         with Container():
             yield Label("⚡  DC29 Badge TUI  ⚡", classes="help-title")
             yield Rule()
-            yield Label("  [yellow]1-5[/]   Switch tabs", markup=True, classes="help-row")
+            yield Label("  [yellow]1-8[/]   Switch tabs (Dashboard / Keys / LEDs / Effects / WLED / Bridges / Stats / Log)", markup=True, classes="help-row")
             yield Label("  [yellow]r[/]     Rainbow chase effect", markup=True, classes="help-row")
             yield Label("  [yellow]b[/]     Breathe effect", markup=True, classes="help-row")
             yield Label("  [yellow]o[/]     Effect off", markup=True, classes="help-row")
@@ -1601,6 +1601,393 @@ class _SetBrightnessMessage(Message):
         self.scale = scale
 
 
+class _ApplyWledMessage(Message):
+    """Apply a WLED runtime knob change (palette/speed/intensity).
+
+    Any field set to ``None`` means "leave unchanged"; the host handler
+    holds the current values and only writes a 0x01 'W' command when at
+    least one field is non-None.
+    """
+    def __init__(
+        self,
+        palette: int | None = None,
+        speed: int | None = None,
+        intensity: int | None = None,
+    ) -> None:
+        super().__init__()
+        self.palette = palette
+        self.speed = speed
+        self.intensity = intensity
+
+
+# ---------------------------------------------------------------------------
+# WLED Tab — pick effect, pick palette, tweak the knobs
+# ---------------------------------------------------------------------------
+
+
+class WledTab(Container):
+    """WLED-inspired control surface — effect grid, palette grid, knobs.
+
+    Inspired by the WLED web UI: a scrollable list of every effect mode
+    (0–34, including hand-rolled and WLED ports), a column of palette
+    swatches showing the actual colors, and Speed/Intensity knobs with
+    typed input + nudge buttons + visual fill bars.
+
+    Selecting an effect or palette applies it instantly to the badge.
+    Nudging a knob debounces through ``_ApplyWledMessage`` so the badge
+    isn't spammed on rapid clicks.
+
+    Hand-rolled effects (modes 1–18) ignore the palette + knob settings —
+    they're hard-coded.  WLED-ported effects (19–34) honor all three.
+    The footer summary calls this out so you don't think the palette
+    selector is broken when it doesn't change a hand-rolled effect.
+    """
+
+    DEFAULT_CSS = """
+    WledTab {
+        padding: 1 2;
+    }
+    WledTab .section-title {
+        color: $accent;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    WledTab .desc {
+        color: $text-muted;
+        margin-bottom: 1;
+    }
+    WledTab #effect-list {
+        height: 1fr;
+        min-height: 14;
+        border: solid $panel-lighten-1;
+        margin-bottom: 1;
+    }
+    WledTab #effect-list ListItem {
+        padding: 0 1;
+    }
+    WledTab #effect-list ListItem.--highlight {
+        background: $accent 20%;
+    }
+    WledTab #effect-list ListItem.-active {
+        background: $accent 40%;
+        text-style: bold;
+    }
+    WledTab #lower-row {
+        height: 18;
+    }
+    WledTab #palette-section {
+        width: 38;
+        border: solid $panel-lighten-1;
+        padding: 1;
+        margin-right: 1;
+    }
+    WledTab #palette-list {
+        height: 1fr;
+        min-height: 10;
+    }
+    WledTab #palette-list ListItem {
+        padding: 0 1;
+    }
+    WledTab #palette-list ListItem.-active {
+        background: $accent 40%;
+        text-style: bold;
+    }
+    WledTab #knobs-section {
+        width: 1fr;
+        border: solid $panel-lighten-1;
+        padding: 1;
+    }
+    WledTab .knob-row {
+        height: 3;
+        margin-bottom: 1;
+    }
+    WledTab .knob-row Label {
+        width: 12;
+        content-align: left middle;
+    }
+    WledTab .knob-row Input {
+        width: 7;
+    }
+    WledTab .knob-row Button {
+        width: 5;
+        margin-left: 0;
+    }
+    WledTab .knob-bar {
+        margin-left: 1;
+        color: $accent;
+    }
+    WledTab #status-line {
+        margin-top: 1;
+        padding: 0 1;
+        color: $text-muted;
+    }
+    WledTab #effect-desc {
+        color: $text-muted;
+        padding: 0 1;
+        margin-bottom: 1;
+        height: 1;
+    }
+    """
+
+    # Internal state — kept here so the host's _ApplyWledMessage handler
+    # only has to read the message, not look up the current sliders.
+    _speed: int = 128
+    _intensity: int = 128
+    _palette: int = 0
+    _effect: int = 0
+
+    def compose(self) -> ComposeResult:
+        from dc29.protocol import (
+            EFFECT_NAMES,
+            EFFECT_DESCRIPTIONS,
+            WledPalette,
+            WLED_PALETTE_NAMES,
+            palette_swatch_markup,
+        )
+
+        yield Label("WLED — pick an effect, pick a color scheme, tweak the knobs.", classes="desc")
+        yield Label(
+            "Inspired by the WLED web UI.  Hand-rolled modes (1–18) ignore the "
+            "palette + knobs; WLED ports (19–34) honor all three.",
+            classes="desc",
+        )
+
+        yield Label("EFFECT", classes="section-title")
+        effect_items: list[ListItem] = []
+        for mode_id, name in EFFECT_NAMES.items():
+            kind = "hand-rolled" if 1 <= mode_id <= 18 else ("WLED port" if mode_id >= 19 else "static")
+            label = f"{mode_id:>2}  {name:<18}  [dim]{kind}[/]"
+            item = ListItem(Label(label), id=f"wled-eff-{mode_id}")
+            if mode_id == 0:
+                item.add_class("-active")
+            effect_items.append(item)
+        yield ListView(*effect_items, id="effect-list", initial_index=0)
+        yield Label(EFFECT_DESCRIPTIONS.get(0, ""), id="effect-desc")
+
+        with Horizontal(id="lower-row"):
+            with Vertical(id="palette-section"):
+                yield Label("PALETTE (color scheme)", classes="section-title")
+                yield Label(
+                    "Click to apply.  Swatches are sampled from the firmware LUT.",
+                    classes="desc",
+                )
+                palette_items: list[ListItem] = []
+                for pid, pname in WLED_PALETTE_NAMES.items():
+                    swatch = palette_swatch_markup(pid, blocks=8)
+                    label = f"{swatch}  {pname}"
+                    item = ListItem(Label(label), id=f"wled-pal-{pid}")
+                    if pid == WledPalette.RAINBOW:
+                        item.add_class("-active")
+                    palette_items.append(item)
+                yield ListView(*palette_items, id="palette-list", initial_index=0)
+
+            with Vertical(id="knobs-section"):
+                yield Label("KNOBS", classes="section-title")
+                yield Label(
+                    "Speed = timebase.  Intensity = effect-specific 'amount' "
+                    "(fade rate, sparkle density, wave width).",
+                    classes="desc",
+                )
+
+                with Horizontal(classes="knob-row"):
+                    yield Label("Speed:")
+                    yield Input(value="128", id="speed-input", restrict=r"[0-9]*")
+                    yield Button("-25", id="speed-dec25")
+                    yield Button(" -1", id="speed-dec1")
+                    yield Button(" +1", id="speed-inc1")
+                    yield Button("+25", id="speed-inc25")
+                yield Static(self._render_bar(128), id="speed-bar", classes="knob-bar")
+
+                with Horizontal(classes="knob-row"):
+                    yield Label("Intensity:")
+                    yield Input(value="128", id="intensity-input", restrict=r"[0-9]*")
+                    yield Button("-25", id="intensity-dec25")
+                    yield Button(" -1", id="intensity-dec1")
+                    yield Button(" +1", id="intensity-inc1")
+                    yield Button("+25", id="intensity-inc25")
+                yield Static(self._render_bar(128), id="intensity-bar", classes="knob-bar")
+
+                yield Static(self._render_status(), id="status-line")
+
+    # ------------------------------------------------------------------
+    # Visual helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _render_bar(value: int, width: int = 32) -> str:
+        """Return a Unicode fill bar showing where ``value`` sits in 0..255."""
+        v = max(0, min(255, int(value)))
+        filled = (v * width) // 255
+        return f"[$accent]{'█' * filled}[/][dim]{'░' * (width - filled)}[/]  {v:>3}/255"
+
+    def _render_status(self) -> str:
+        from dc29.protocol import EFFECT_NAMES, WLED_PALETTE_NAMES
+        eff_name = EFFECT_NAMES.get(self._effect, str(self._effect))
+        pal_name = WLED_PALETTE_NAMES.get(self._palette, str(self._palette))
+        is_wled = self._effect >= 19
+        marker = "[green]●[/] honors palette + knobs" if is_wled else "[yellow]○[/] ignores palette + knobs"
+        return (
+            f"[bold]Active:[/] effect [cyan]#{self._effect}[/] [dim]({eff_name})[/]  "
+            f"·  palette [cyan]{pal_name}[/]  ·  speed {self._speed}  ·  intensity {self._intensity}\n"
+            f"      {marker}"
+        )
+
+    # ------------------------------------------------------------------
+    # Event handlers
+    # ------------------------------------------------------------------
+
+    @on(ListView.Selected, "#effect-list")
+    def _effect_selected(self, event: ListView.Selected) -> None:
+        item_id = event.item.id or ""
+        if not item_id.startswith("wled-eff-"):
+            return
+        try:
+            mode = int(item_id.removeprefix("wled-eff-"))
+        except ValueError:
+            return
+        self._set_active("effect", mode)
+        self._effect = mode
+        from dc29.protocol import EFFECT_DESCRIPTIONS
+        self.query_one("#effect-desc", Label).update(EFFECT_DESCRIPTIONS.get(mode, ""))
+        self.query_one("#status-line", Static).update(self._render_status())
+        self.app.post_message(_ApplyEffectMessage(mode))
+
+    @on(ListView.Selected, "#palette-list")
+    def _palette_selected(self, event: ListView.Selected) -> None:
+        item_id = event.item.id or ""
+        if not item_id.startswith("wled-pal-"):
+            return
+        try:
+            pid = int(item_id.removeprefix("wled-pal-"))
+        except ValueError:
+            return
+        self._set_active("palette", pid)
+        self._palette = pid
+        self.query_one("#status-line", Static).update(self._render_status())
+        self.app.post_message(_ApplyWledMessage(palette=pid))
+
+    @on(Input.Submitted, "#speed-input")
+    def _speed_submitted(self, event: Input.Submitted) -> None:
+        self._apply_knob_input("speed", event.value)
+
+    @on(Input.Submitted, "#intensity-input")
+    def _intensity_submitted(self, event: Input.Submitted) -> None:
+        self._apply_knob_input("intensity", event.value)
+
+    @on(Button.Pressed)
+    def _knob_button(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+        # Button IDs are encoded as "<knob>-<signed_delta>", e.g. "speed--25",
+        # "speed--1", "speed-+1", "speed-+25".  Strip the knob prefix and look
+        # the suffix up in the delta map.
+        if bid.startswith("speed-"):
+            self._nudge("speed", bid.removeprefix("speed-"))
+        elif bid.startswith("intensity-"):
+            self._nudge("intensity", bid.removeprefix("intensity-"))
+
+    # ------------------------------------------------------------------
+    # Internal — knob plumbing
+    # ------------------------------------------------------------------
+
+    def _nudge(self, knob: str, suffix: str) -> None:
+        """Apply +1 / -1 / +25 / -25 to the named knob and re-emit.
+
+        ``suffix`` is the part of the button id after ``"<knob>-"``, e.g.
+        ``dec25``, ``dec1``, ``inc1``, ``inc25``.
+        """
+        delta_map = {"dec25": -25, "dec1": -1, "inc1": 1, "inc25": 25}
+        if suffix not in delta_map:
+            return
+        delta = delta_map[suffix]
+        if knob == "speed":
+            self._speed = max(0, min(255, self._speed + delta))
+            self._refresh_knob("speed", self._speed)
+            self.app.post_message(_ApplyWledMessage(speed=self._speed))
+        else:
+            self._intensity = max(0, min(255, self._intensity + delta))
+            self._refresh_knob("intensity", self._intensity)
+            self.app.post_message(_ApplyWledMessage(intensity=self._intensity))
+
+    def _apply_knob_input(self, knob: str, raw: str) -> None:
+        """Handle user typing a value into a knob's Input box."""
+        try:
+            v = int(raw)
+        except ValueError:
+            return
+        v = max(0, min(255, v))
+        if knob == "speed":
+            self._speed = v
+            self._refresh_knob("speed", v)
+            self.app.post_message(_ApplyWledMessage(speed=v))
+        else:
+            self._intensity = v
+            self._refresh_knob("intensity", v)
+            self.app.post_message(_ApplyWledMessage(intensity=v))
+
+    def _refresh_knob(self, knob: str, value: int) -> None:
+        try:
+            inp = self.query_one(f"#{knob}-input", Input)
+            with inp.prevent(Input.Changed, Input.Submitted):
+                inp.value = str(value)
+            self.query_one(f"#{knob}-bar", Static).update(self._render_bar(value))
+            self.query_one("#status-line", Static).update(self._render_status())
+        except NoMatches:
+            pass
+
+    def _set_active(self, kind: str, item_id: int) -> None:
+        """Move the .-active class to the newly selected item."""
+        list_id = "#effect-list" if kind == "effect" else "#palette-list"
+        prefix = "wled-eff-" if kind == "effect" else "wled-pal-"
+        try:
+            lv = self.query_one(list_id, ListView)
+            for child in lv.children:
+                if isinstance(child, ListItem):
+                    child.remove_class("-active")
+            target = self.query_one(f"#{prefix}{item_id}", ListItem)
+            target.add_class("-active")
+        except NoMatches:
+            pass
+
+    # ------------------------------------------------------------------
+    # External API — host calls these to keep the TUI in sync
+    # ------------------------------------------------------------------
+
+    def set_effect_display(self, mode: int) -> None:
+        """Reflect a remote effect change (chord cycle, CLI, etc.)."""
+        from dc29.protocol import EFFECT_NAMES, EFFECT_DESCRIPTIONS
+        if mode not in EFFECT_NAMES:
+            return
+        self._effect = mode
+        try:
+            self._set_active("effect", mode)
+            lv = self.query_one("#effect-list", ListView)
+            # Find index of the selected mode and scroll/highlight it
+            for idx, child in enumerate(lv.children):
+                if isinstance(child, ListItem) and child.id == f"wled-eff-{mode}":
+                    lv.index = idx
+                    break
+            self.query_one("#effect-desc", Label).update(EFFECT_DESCRIPTIONS.get(mode, ""))
+            self.query_one("#status-line", Static).update(self._render_status())
+        except NoMatches:
+            pass
+
+    def set_wled_display(self, *, palette: int | None = None, speed: int | None = None, intensity: int | None = None) -> None:
+        """Reflect a remote WLED-knob change without re-emitting it."""
+        if palette is not None:
+            self._palette = palette
+            self._set_active("palette", palette)
+        if speed is not None:
+            self._speed = max(0, min(255, speed))
+            self._refresh_knob("speed", self._speed)
+        if intensity is not None:
+            self._intensity = max(0, min(255, intensity))
+            self._refresh_knob("intensity", self._intensity)
+        try:
+            self.query_one("#status-line", Static).update(self._render_status())
+        except NoMatches:
+            pass
+
+
 # ---------------------------------------------------------------------------
 # Bridges & Inputs Tab
 # ---------------------------------------------------------------------------
@@ -1861,9 +2248,10 @@ class BadgeTUI(App):
         Binding("2", "switch_tab('keys')", "Keys", show=False),
         Binding("3", "switch_tab('leds')", "LEDs", show=False),
         Binding("4", "switch_tab('effects')", "Effects", show=False),
-        Binding("5", "switch_tab('bridges')", "Bridges", show=False),
-        Binding("6", "switch_tab('stats')", "Stats", show=False),
-        Binding("7", "switch_tab('log')", "Log", show=False),
+        Binding("5", "switch_tab('wled')", "WLED", show=False),
+        Binding("6", "switch_tab('bridges')", "Bridges", show=False),
+        Binding("7", "switch_tab('stats')", "Stats", show=False),
+        Binding("8", "switch_tab('log')", "Log", show=False),
         Binding("r", "rainbow", "Rainbow", show=False),
         Binding("b", "breathe", "Breathe", show=False),
         Binding("o", "effect_off", "Effect Off", show=False),
@@ -2044,11 +2432,13 @@ class BadgeTUI(App):
                 yield LEDsTab()
             with TabPane("Effects [4]", id="effects"):
                 yield EffectsTab()
-            with TabPane("Bridges & Inputs [5]", id="bridges"):
+            with TabPane("WLED [5]", id="wled"):
+                yield WledTab()
+            with TabPane("Bridges & Inputs [6]", id="bridges"):
                 yield BridgesTab()
-            with TabPane("Stats [6]", id="stats"):
+            with TabPane("Stats [7]", id="stats"):
                 yield StatsTab()
-            with TabPane("Log [7]", id="log"):
+            with TabPane("Log [8]", id="log"):
                 yield LogTab()
         yield Footer()
 
@@ -2381,6 +2771,37 @@ class BadgeTUI(App):
             self.query_one(DashboardTab).update_effect(event.mode)
         except NoMatches:
             pass
+        # Mirror the change into WledTab so its highlight tracks even when
+        # the user picks an effect from the Effects tab radio set.
+        try:
+            self.query_one(WledTab).set_effect_display(event.mode)
+        except NoMatches:
+            pass
+
+    @on(_ApplyWledMessage)
+    def _handle_apply_wled(self, event: _ApplyWledMessage) -> None:
+        """WLED knob change — palette / speed / intensity.
+
+        Reads any previously-set values from the WledTab so a partial
+        update (e.g. palette only) still emits a complete 0x01 'W' command
+        with the current speed + intensity preserved.
+        """
+        from dc29.protocol import WLED_PALETTE_NAMES
+        try:
+            wt = self.query_one(WledTab)
+        except NoMatches:
+            return
+        speed     = event.speed     if event.speed     is not None else wt._speed
+        intensity = event.intensity if event.intensity is not None else wt._intensity
+        palette   = event.palette   if event.palette   is not None else wt._palette
+        self._badge.set_wled(speed=speed, intensity=intensity, palette=palette)
+        # Log the change with whichever field actually changed (or "all" if multiple).
+        bits = []
+        if event.speed     is not None: bits.append(f"speed={speed}")
+        if event.intensity is not None: bits.append(f"intensity={intensity}")
+        if event.palette   is not None: bits.append(f"palette={WLED_PALETTE_NAMES.get(palette, palette)}")
+        if bits:
+            self._log_event(f"[magenta]◎ WLED:[/] {', '.join(bits)}")
 
     @on(_PlaySceneMessage)
     def _handle_play_scene(self, event: _PlaySceneMessage) -> None:

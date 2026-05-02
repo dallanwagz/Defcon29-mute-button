@@ -1763,6 +1763,125 @@ def set_effect(
 
 
 # ---------------------------------------------------------------------------
+# set-wled command — runtime knobs for WLED-ported effects (modes 19+)
+# ---------------------------------------------------------------------------
+
+
+def _parse_palette(value: str) -> int:
+    """Parse a palette argument: integer 0..7 or any name from WLED_PALETTE_NAMES."""
+    from dc29.protocol import WLED_PALETTE_NAMES
+    try:
+        n = int(value, 0)
+        if n in WLED_PALETTE_NAMES:
+            return n
+        raise ValueError
+    except ValueError:
+        pass
+    low = value.lower().strip()
+    rev = {v: k for k, v in WLED_PALETTE_NAMES.items()}
+    if low in rev:
+        return rev[low]
+    typer.echo(
+        f"Unknown palette {value!r}.  "
+        f"Use a number 0..{max(WLED_PALETTE_NAMES)} or one of: {', '.join(WLED_PALETTE_NAMES.values())}.",
+        err=True,
+    )
+    raise typer.Exit(1)
+
+
+@app.command("set-wled")
+def set_wled(
+    palette: Optional[str] = typer.Option(
+        None, "--palette",
+        help="Palette name or index 0..7 (rainbow, heat, ocean, lava, pacifica, sunset, forest, party).",
+    ),
+    speed: Optional[int] = typer.Option(
+        None, "--speed", min=0, max=255,
+        help="Effect timebase, 0..255 (firmware default 128).",
+    ),
+    intensity: Optional[int] = typer.Option(
+        None, "--intensity", min=0, max=255,
+        help="Per-effect 'amount' knob, 0..255 (firmware default 128).",
+    ),
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+) -> None:
+    """Set WLED runtime knobs (palette, speed, intensity).
+
+    Mirrors WLED's /win&FP=&SX=&IX= API.  Affects WLED-ported effects only
+    (modes 19+); hand-rolled effects (1–18) ignore these knobs.
+
+    Any flag you omit defaults to 128 (speed/intensity) or rainbow
+    (palette) since the firmware doesn't expose its current values back
+    to us — pass all three for predictable results.
+
+    Examples:
+
+    \b
+      dc29 set-wled --palette pacifica
+      dc29 set-wled --palette sunset --speed 180 --intensity 200
+      dc29 set-wled --palette 5 --speed 64       # numeric forms also work
+    """
+    from dc29.badge import BadgeAPI
+    from dc29.protocol import WLED_PALETTE_NAMES
+
+    if palette is None and speed is None and intensity is None:
+        typer.echo("Pass at least one of --palette / --speed / --intensity.", err=True)
+        raise typer.Exit(1)
+
+    pal_idx  = _parse_palette(palette) if palette is not None else 0
+    speed_v  = speed     if speed     is not None else 128
+    inten_v  = intensity if intensity is not None else 128
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+    deadline = time.monotonic() + 5.0
+    while not badge.connected and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if not badge.connected:
+        typer.echo(f"Could not open {resolved_port}.", err=True)
+        badge.close()
+        raise typer.Exit(1)
+
+    badge.set_wled(speed=speed_v, intensity=inten_v, palette=pal_idx)
+    time.sleep(0.1)
+    badge.close()
+    typer.echo(
+        f"WLED knobs set: palette={WLED_PALETTE_NAMES.get(pal_idx, pal_idx)} "
+        f"speed={speed_v} intensity={inten_v}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# list-effects / list-palettes — cheat-sheet commands
+# ---------------------------------------------------------------------------
+
+
+@app.command("list-effects")
+def list_effects() -> None:
+    """List every available effect mode with its description."""
+    from dc29.protocol import EFFECT_NAMES, EFFECT_DESCRIPTIONS
+    for mode_id, name in EFFECT_NAMES.items():
+        kind = "static" if mode_id == 0 else ("hand-rolled" if mode_id <= 18 else "WLED port")
+        desc = EFFECT_DESCRIPTIONS.get(mode_id, "")
+        typer.echo(f"  {mode_id:>2}  {name:<18}  [{kind:<11}]  {desc}")
+
+
+@app.command("list-palettes")
+def list_palettes() -> None:
+    """List every available WLED palette with a 16-block color preview."""
+    from dc29.protocol import WLED_PALETTE_NAMES, WLED_PALETTE_LUTS
+    for pid, pname in WLED_PALETTE_NAMES.items():
+        lut = WLED_PALETTE_LUTS[pid]
+        # Render with ANSI 24-bit color escape codes for terminal preview
+        swatch = "".join(f"\033[48;2;{r};{g};{b}m  \033[0m" for r, g, b in lut)
+        typer.echo(f"  {pid}  {swatch} {pname}")
+
+
+# ---------------------------------------------------------------------------
 # info command
 # ---------------------------------------------------------------------------
 
