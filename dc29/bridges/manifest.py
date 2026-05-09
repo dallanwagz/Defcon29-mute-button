@@ -81,6 +81,11 @@ def _make_beat_strobe(badge: "BadgeAPI", cfg: "Config") -> "BaseBridge":
     return BeatStrobeBridge(badge, cfg)
 
 
+def _make_beat_buzzer(badge: "BadgeAPI", cfg: "Config") -> "BaseBridge":
+    from dc29.bridges.beat_buzzer import BeatBuzzerBridge
+    return BeatBuzzerBridge(badge, cfg)
+
+
 def _make_stay_awake(badge: "BadgeAPI", cfg: "Config") -> "BaseBridge":
     from dc29.bridges.stay_awake import StayAwakeBridge
     return StayAwakeBridge(badge, cfg)
@@ -127,6 +132,11 @@ BRIDGE_MANIFEST: list[BridgeSpec] = [
         name="beat-strobe",
         description="Tight 200 Hz beat strobe — DJ booth vibe (BlackHole + FFT)",
         factory=_make_beat_strobe,
+    ),
+    BridgeSpec(
+        name="beat-buzzer",
+        description="Beat-synced buzzer kick — fires F04 KICK pattern on every detected beat",
+        factory=_make_beat_buzzer,
     ),
     BridgeSpec(
         name="stay-awake",

@@ -306,6 +306,10 @@ static const note_t pat_ci_passed[]      = { {800, 50}, {0, 30}, {1200, 50},
                                              {0, 30}, {1600, 80}, {0, 0} };
 static const note_t pat_ci_failed[]      = { {600, 80}, {0, 40}, {500, 80},
                                              {0, 40}, {400, 150}, {0, 0} };
+/* F05 — short low-pitch thud designed to ride on top of music as a
+ * physical kick-drum tap.  ~12 ms keeps it punchy without smearing into
+ * the next beat at typical club tempos. */
+static const note_t pat_kick[]           = { {180, 12}, {0, 0} };
 
 static const note_t * const PATTERNS[] = {
 	[0] = NULL,                   /* silence */
@@ -316,6 +320,7 @@ static const note_t * const PATTERNS[] = {
 	[5] = pat_teams_mute_off,
 	[6] = pat_ci_passed,
 	[7] = pat_ci_failed,
+	[8] = pat_kick,
 };
 #define PATTERN_COUNT (sizeof(PATTERNS)/sizeof(PATTERNS[0]))
 

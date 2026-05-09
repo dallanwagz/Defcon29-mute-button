@@ -382,6 +382,7 @@ class BeepPattern(IntEnum):
     TEAMS_MUTE_OFF  = 5
     CI_PASSED       = 6
     CI_FAILED       = 7
+    KICK            = 8   # F05 — 180 Hz / 12 ms thud for beat-buzzer bridge
 
 
 class MuteState(IntEnum):

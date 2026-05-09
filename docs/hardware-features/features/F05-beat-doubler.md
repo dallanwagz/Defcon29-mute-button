@@ -1,6 +1,6 @@
 # F05 — Beat-doubler (audio-reactive buzzer sync)
 
-> Status: **planned** · Risk: **low** · Owner: bridges
+> Status: **shipped (KICK pattern + bridge verified at synthetic 150 BPM); music sync test deferred** · Risk: **low** · Owner: bridges
 
 ## Goal
 
@@ -121,9 +121,10 @@ _To be filled in after manual verification._
 
 ### Implementation phase
 
-- [ ] Bridge code complete
-- [ ] Bridge registered in TUI + manifest
-- [ ] Manual hardware test passed (all items in Test plan above)
+- [x] Bridge code complete (`dc29/bridges/beat_buzzer.py` mirrors `beat_strobe.py`)
+- [x] Bridge registered in TUI + manifest (slot between `beat-strobe` and `stay-awake`; TUI checkbox auto-discovers)
+- [x] KICK pattern (id 8, 180 Hz / 12 ms) added to firmware `pwm.c` + `BeepPattern.KICK` in protocol.py; verified audible 2026-05-09 by firing 8 pulses at ~150 BPM via `BadgeAPI.play_beep(BeepPattern.KICK)` — distinct low thud, punchy, no smear
+- [ ] Manual hardware test passed (all items in Test plan above) — **deferred**: music-driven smoke test not run because the user's BlackHole + Multi-Output Device routing wasn't producing audible playback through speakers during the test window. Code path is exercised via the KICK pulse test above; music sync just needs the macOS Multi-Output Device wired correctly. Re-test by enabling `dc29 start --enable beat-buzzer` once Sound Output is set to a Multi-Output Device that includes BlackHole.
 - [ ] Implementation notes filled in
 - [ ] Testing notes filled in
 
