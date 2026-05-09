@@ -1,6 +1,6 @@
 # F04 — Distinct beep signatures per event
 
-> Status: **planned** · Risk: **low** · Owner: firmware + bridges
+> Status: **hardware-verified** · Risk: **low** · Owner: firmware + bridges
 
 ## Goal
 
@@ -148,9 +148,9 @@ _To be filled in after manual verification._
 
 ### Implementation phase
 
-- [ ] Code complete
-- [ ] Build passes (≤ 56 KB)
-- [ ] Manual hardware test passed (all items in Test plan above)
+- [x] Code complete
+- [x] Build passes (≤ 56 KB) — 49648 B
+- [x] Manual hardware test passed (all items in Test plan above) — verified 2026-05-09 via `tools/test_beep_patterns.py`: 8 patterns audibly distinct; SILENCE cancels mid-pattern; pattern-preempts-pattern works; takeover-cancels-pattern works.
 - [ ] Implementation notes filled in
 - [ ] Testing notes filled in
 

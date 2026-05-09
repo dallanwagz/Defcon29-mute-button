@@ -43,6 +43,7 @@ from dc29.protocol import (
     CMD_PAINT_ALL,
     CMD_SET_SLIDER,
     CMD_SET_SPLASH,
+    CMD_BEEP_PATTERN,
     CMD_HAPTIC_CLICK,
     CMD_JIGGLER,
     CMD_MOD_TABLE,
@@ -507,6 +508,21 @@ class BadgeAPI:
         """
         cmd = bytes([ESCAPE, CMD_HAPTIC_CLICK, 1 if enabled else 0])
         self._write(cmd)
+
+    def play_beep(self, pattern) -> None:
+        """Play one of the firmware-side F04 beep patterns.
+
+        Args:
+            pattern: A :class:`~dc29.protocol.BeepPattern` member or its
+                integer id.  ``BeepPattern.SILENCE`` cancels any pattern
+                currently playing.
+
+        Returns immediately; the buzzer continues asynchronously via
+        firmware timers.  A new ``play_beep`` while one is in flight
+        preempts it (cancel + restart from note 0 of the new pattern).
+        """
+        pid = int(pattern) & 0xFF
+        self._write(bytes([ESCAPE, CMD_BEEP_PATTERN, pid]))
 
     def awake_pulse(self) -> None:
         """Fire one F08a-lite wake pulse on the badge.

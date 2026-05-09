@@ -147,6 +147,8 @@ void updateSerialConsole(void){
 				 *   'X'                          → 1 arg total
 				 * First arg is the sub-cmd; we expand args_needed once we see it. */
 				if(data == 'j'){ escape_args_needed = 1; escape_state = 2; return; }
+				/* F04 — named beep patterns.  1 arg = pattern id (0..255). */
+				if(data == 'p'){ escape_args_needed = 1; escape_state = 2; return; }
 				return;
 			}
 			if(escape_state == 2){
@@ -233,6 +235,9 @@ void updateSerialConsole(void){
 					} else if(sub == 'X'){
 						input_clear_all_actions();
 					}
+				} else if(escape_cmd == 'p'){
+					/* F04 — play beep pattern by id (0 = silence/cancel). */
+					beep_play_pattern(escape_args[0]);
 				} else if(escape_cmd == 'j'){
 					/* F08a-lite — Stay Awake jiggler. */
 					uint8_t sub = escape_args[0];

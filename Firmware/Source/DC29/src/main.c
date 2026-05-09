@@ -567,6 +567,7 @@ int main(void)
 		if(USBPower && ((millis - last_usb_comms) < 100)){
 			input_tick();
 			jiggler_tick();
+			beep_pattern_tick();
 
 			touch_sensors_measure();
 			if(p_selfcap_measure_data->measurement_done_touch == 1u){

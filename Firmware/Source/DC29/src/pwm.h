@@ -79,4 +79,35 @@ bool splash_tick(void);
 void buzzer_play(uint16_t freq_hz, uint8_t duration_ms);
 void buzzer_cancel(void);
 
+/* ─── Buzzer arbitration (F04) ──────────────────────────────────────────
+ * The buzzer is shared.  Higher-priority owners preempt lower ones; equal
+ * or lower-priority requests are dropped while a higher owner plays.
+ * Priority order (highest wins):
+ *   BZO_GAME      — game audio (reserved; no current callers)
+ *   BZO_TAKEOVER  — button-press takeover click + thud
+ *   BZO_PATTERN   — F04 named beep patterns
+ *   BZO_HAPTIC    — F03 modifier-only macro click
+ *   BZO_IDLE      — nothing playing
+ * Use buzzer_play_owned() in new code; legacy buzzer_play() is treated as
+ * BZO_HAPTIC (lowest priority) so existing callers keep working.
+ */
+typedef enum {
+	BZO_IDLE          = 0,
+	BZO_HAPTIC        = 1,
+	BZO_PATTERN       = 2,
+	BZO_TAKEOVER      = 3,
+	BZO_GAME          = 4,
+} buzzer_owner_t;
+
+void buzzer_play_owned(buzzer_owner_t owner, uint16_t freq_hz, uint8_t duration_ms);
+buzzer_owner_t buzzer_current_owner(void);
+
+/* ─── F04 beep patterns ─────────────────────────────────────────────────
+ * Named patterns live in flash (read-only).  Pattern id 0 is reserved
+ * for "silence" — calling beep_play_pattern(0) cancels any in-progress
+ * pattern.  beep_pattern_tick() must be called from the main loop.
+ */
+void beep_play_pattern(uint8_t id);
+void beep_pattern_tick(void);
+
 #endif /* PWM_H_ */

@@ -203,6 +203,26 @@ gone — the haptic click fills that gap.
 RAM-only; default returns to enabled on every reboot.
 """
 
+CMD_BEEP_PATTERN: int = ord("p")
+"""
+``0x01 'p' <pattern_id>`` — F04 named beep pattern.
+
+The badge ships a small library of (frequency, duration) sequences in
+flash and plays the requested one asynchronously.  The CDC byte returns
+immediately; the pattern continues via firmware timers.
+
+Arguments (1 byte):
+  * ``pattern_id`` — index into the firmware ``PATTERNS`` table.  See
+    :class:`BeepPattern` for the canonical names.  ``0`` is reserved for
+    ``SILENCE`` and cancels any in-progress pattern.
+
+Sending a new pattern while one is playing **preempts** the running
+pattern (cancel + restart from note 0 of the new pattern) per
+``DESIGN.md §1`` Q7.  A button-press takeover click also cancels a
+running pattern (per F04 Q1) — host should re-issue if the cue still
+matters after the press.
+"""
+
 CMD_JIGGLER: int = ord("j")
 """
 ``0x01 'j' <sub> ...`` — F08a-lite Stay Awake jiggler.
@@ -343,6 +363,25 @@ Single-tap continues to use the legacy ``'B'`` event for backwards compat.
 # ---------------------------------------------------------------------------
 # Mute / meeting state
 # ---------------------------------------------------------------------------
+
+
+class BeepPattern(IntEnum):
+    """F04 named beep patterns shipped in firmware flash.
+
+    Send via :meth:`~dc29.badge.BadgeAPI.play_beep` or directly with
+    ``ESCAPE + CMD_BEEP_PATTERN + <pattern_id>``.  ``SILENCE`` (id 0)
+    cancels any in-progress pattern.  The firmware pattern table is in
+    ``Firmware/Source/DC29/src/pwm.c``; keep these IDs in sync.
+    """
+
+    SILENCE         = 0
+    CONFIRM         = 1
+    DECLINE         = 2
+    TEAMS_RINGING   = 3
+    TEAMS_MUTE_ON   = 4
+    TEAMS_MUTE_OFF  = 5
+    CI_PASSED       = 6
+    CI_FAILED       = 7
 
 
 class MuteState(IntEnum):

@@ -163,13 +163,18 @@ void send_keys(uint8_t key){
 		}
 	}
 
-	/* F03 — haptic click.  Only fires when the takeover animation isn't
-	 * going to (button_flash off → bridge owns LEDs → no built-in click).
+	/* F03 — haptic click.  Only fires when:
+	 *   - the takeover animation isn't going to (button_flash off → bridge
+	 *     owns LEDs → no built-in click), AND
+	 *   - no F04 beep pattern is currently playing (per DESIGN.md §2,
+	 *     pattern outranks haptic and we don't want to talk over it).
 	 * Frequency/duration tuned to match the JOY personality click — proven
 	 * audible on this piezo.  The buzzer cv formula is 15625/freq, so
 	 * frequencies above ~2 kHz produce cv values too small to drive the
 	 * piezo reliably. */
-	if(haptic_click_enabled && !button_flash_enabled && key >= 1 && key <= 6){
-		buzzer_play(1500, 15);
+	if(haptic_click_enabled && !button_flash_enabled
+	   && key >= 1 && key <= 6
+	   && buzzer_current_owner() != BZO_PATTERN){
+		buzzer_play_owned(BZO_HAPTIC, 1500, 15);
 	}
 }

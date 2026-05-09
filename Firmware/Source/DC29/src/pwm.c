@@ -218,20 +218,33 @@ void led_set_resting_color(uint8_t led, uint8_t color[3]){
 /* ─── Buzzer ─────────────────────────────────────────────────────────────
  * TCC2 is MATCH_FREQ mode on GCLK3 (8 MHz) with prescaler DIV256.
  * TCC2 clock = 31 250 Hz.  Output frequency ≈ 15625 / compare_value Hz.
+ *
+ * Arbitration: every successful buzzer_play() records who's playing in
+ * _buz_owner; expiration via _buzzer_tick() returns owner to BZO_IDLE.
+ * F04 patterns rely on this to know when to advance to the next note.
  * ─────────────────────────────────────────────────────────────────────── */
 
 static uint32_t _buz_end = 0;
+static volatile buzzer_owner_t _buz_owner = BZO_IDLE;
+
+/* Forward decl for pattern engine (defined below). */
+static void _pattern_cancel_internal(void);
 
 static void _buzzer_tick(void){
 	if(_buz_end && (millis >= _buz_end)){
 		tcc_stop_counter(&tcc2_instance);
 		_buz_end = 0;
+		_buz_owner = BZO_IDLE;
 	}
 }
 
-/* Non-blocking: set frequency, start for duration_ms, return immediately. */
-void buzzer_play(uint16_t freq_hz, uint8_t duration_ms){
-	if(!freq_hz){ buzzer_cancel(); return; }
+/* Internal raw play — assumes the caller already passed the priority gate. */
+static void _buzzer_play_raw(uint16_t freq_hz, uint8_t duration_ms){
+	if(!freq_hz){
+		tcc_stop_counter(&tcc2_instance);
+		_buz_end = 0;
+		return;
+	}
 	uint16_t cv = (uint16_t)(15625u / freq_hz);
 	if(cv < 1)   cv = 1;
 	if(cv > 255) cv = 255;
@@ -240,9 +253,125 @@ void buzzer_play(uint16_t freq_hz, uint8_t duration_ms){
 	_buz_end = millis + duration_ms;
 }
 
+/* Public arbitrated play.  Higher-priority owners preempt lower ones (and
+ * cancel a running pattern); equal/lower-priority requests are dropped if
+ * a stronger owner is mid-tone. */
+void buzzer_play_owned(buzzer_owner_t owner, uint16_t freq_hz, uint8_t duration_ms){
+	if(_buz_owner != BZO_IDLE && _buz_owner > owner){
+		return; /* higher-priority owner is mid-tone — drop */
+	}
+	/* Preempting a pattern from anything else cancels the pattern engine. */
+	if(_buz_owner == BZO_PATTERN && owner != BZO_PATTERN){
+		_pattern_cancel_internal();
+	}
+	_buz_owner = owner;
+	_buzzer_play_raw(freq_hz, duration_ms);
+}
+
+/* Legacy entry point — treated as the lowest-priority owner so existing
+ * call sites keep working without source changes. */
+void buzzer_play(uint16_t freq_hz, uint8_t duration_ms){
+	buzzer_play_owned(BZO_HAPTIC, freq_hz, duration_ms);
+}
+
 void buzzer_cancel(void){
 	tcc_stop_counter(&tcc2_instance);
 	_buz_end = 0;
+	_buz_owner = BZO_IDLE;
+}
+
+buzzer_owner_t buzzer_current_owner(void){
+	return _buz_owner;
+}
+
+/* ─── F04 beep patterns ──────────────────────────────────────────────────
+ * Each pattern is a flat array of (freq_hz, dur_ms) notes terminated by
+ * (any, 0) — dur_ms == 0 is the end-of-pattern sentinel.  freq_hz == 0
+ * means "silent rest" (no tone) for dur_ms.  Patterns are read from
+ * flash; no RAM cost beyond the engine state. */
+
+typedef struct {
+	uint16_t freq_hz;
+	uint16_t dur_ms;
+} note_t;
+
+/* IDs match dc29.protocol.BeepPattern. */
+static const note_t pat_confirm[]        = { {1200, 30}, {0, 0} };
+static const note_t pat_decline[]        = { {300, 60}, {0, 30}, {300, 60}, {0, 0} };
+static const note_t pat_teams_ringing[]  = { {880, 100}, {0, 50}, {880, 100},
+                                             {0, 200}, {880, 100}, {0, 50}, {880, 100}, {0, 0} };
+static const note_t pat_teams_mute_on[]  = { {1500, 25}, {0, 30}, {600, 60}, {0, 0} };
+static const note_t pat_teams_mute_off[] = { {600, 60}, {0, 30}, {1500, 25}, {0, 0} };
+static const note_t pat_ci_passed[]      = { {800, 50}, {0, 30}, {1200, 50},
+                                             {0, 30}, {1600, 80}, {0, 0} };
+static const note_t pat_ci_failed[]      = { {600, 80}, {0, 40}, {500, 80},
+                                             {0, 40}, {400, 150}, {0, 0} };
+
+static const note_t * const PATTERNS[] = {
+	[0] = NULL,                   /* silence */
+	[1] = pat_confirm,
+	[2] = pat_decline,
+	[3] = pat_teams_ringing,
+	[4] = pat_teams_mute_on,
+	[5] = pat_teams_mute_off,
+	[6] = pat_ci_passed,
+	[7] = pat_ci_failed,
+};
+#define PATTERN_COUNT (sizeof(PATTERNS)/sizeof(PATTERNS[0]))
+
+static const note_t *_pat_cur = NULL;
+static uint16_t       _pat_idx = 0;
+static uint32_t       _pat_note_end = 0;
+
+static void _pattern_cancel_internal(void){
+	_pat_cur = NULL;
+	_pat_idx = 0;
+	_pat_note_end = 0;
+}
+
+void beep_play_pattern(uint8_t id){
+	if(id == 0 || id >= PATTERN_COUNT || PATTERNS[id] == NULL){
+		/* Silence / unknown id: cancel any running pattern. */
+		_pattern_cancel_internal();
+		if(_buz_owner == BZO_PATTERN){
+			buzzer_cancel();
+		}
+		return;
+	}
+	_pat_cur = PATTERNS[id];
+	_pat_idx = 0;
+	_pat_note_end = 0; /* fire first note immediately on next tick */
+}
+
+void beep_pattern_tick(void){
+	if(_pat_cur == NULL) return;
+
+	/* If a higher-priority owner stole the buzzer, the pattern is dead.
+	 * (buzzer_play_owned already calls _pattern_cancel_internal in that
+	 * case, so this is a belt-and-braces check.) */
+	if(_buz_owner != BZO_IDLE && _buz_owner != BZO_PATTERN) return;
+
+	/* Wait for current note to finish before advancing. */
+	if(_pat_note_end != 0 && (int32_t)(_pat_note_end - millis) > 0) return;
+
+	const note_t *n = &_pat_cur[_pat_idx];
+	if(n->dur_ms == 0){
+		/* End of pattern. */
+		_pattern_cancel_internal();
+		_buz_owner = BZO_IDLE;
+		return;
+	}
+
+	if(n->freq_hz == 0){
+		/* Rest: keep the buzzer silent for dur_ms. */
+		buzzer_cancel();
+		_buz_owner = BZO_PATTERN;  /* still own the buzzer through the rest */
+	} else {
+		uint8_t dur = n->dur_ms > 255 ? 255 : (uint8_t)n->dur_ms;
+		buzzer_play_owned(BZO_PATTERN, n->freq_hz, dur);
+	}
+	_pat_note_end = millis + n->dur_ms;
+	_pat_idx++;
 }
 
 /* Legacy wrappers kept for serialconsole compatibility */
@@ -500,7 +629,7 @@ void takeover_start(uint8_t src_0){
 	/* Immediate ignition flash so press feels instant before key sends */
 	led_pct(src_0, tk.inv_rgb, 100);
 
-	buzzer_play(PP[tk.pers].click_hz, PP[tk.pers].click_ms);
+	buzzer_play_owned(BZO_TAKEOVER, PP[tk.pers].click_hz, PP[tk.pers].click_ms);
 }
 
 /* Call once per main-loop tick from update_effects().
@@ -513,7 +642,7 @@ bool takeover_tick(void){
 
 	/* Fire blackout thud at the F1→F2 boundary inside resolution */
 	if(!tk.blackout_buzzed && t >= (tk.p3_end + 100)){
-		buzzer_play(PP[tk.pers].thud_hz, PP[tk.pers].thud_ms);
+		buzzer_play_owned(BZO_TAKEOVER, PP[tk.pers].thud_hz, PP[tk.pers].thud_ms);
 		tk.blackout_buzzed = true;
 	}
 
