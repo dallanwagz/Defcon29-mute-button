@@ -327,7 +327,7 @@ If F07 ends up not needing EEPROM (e.g., we move vault to RAM-only too), the bum
 
 Accept reduced vault (2 × 16 pairs) and reduced TOTP (1 slot, 4-char label) to avoid blowing the 260-byte EEPROM cap?
 
-- [ ] ✅ Approve as proposed (accept reduced sizes)
+- [x ] ✅ Approve as proposed (accept reduced sizes)
 - [ ] ❌ Reject — pick alternative (i) or (ii) from §3
 - [ ] 🔄 Modify (see comments)
 
@@ -343,7 +343,7 @@ Accept reduced vault (2 × 16 pairs) and reduced TOTP (1 slot, 4-char label) to 
 Keep MIDI mode contingent on ASF driver availability (drop only if ASF refuses), or drop now and ship 4 modes (default / kbd / kbd+mouse / cdc)?
 
 - [ ] ✅ Approve as proposed (keep, drop only if ASF refuses)
-- [ ] ❌ Drop now — vendor MIDI driver is not worth the complexity
+- [x ] ❌ Drop now — vendor MIDI driver is not worth the complexity
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
@@ -357,7 +357,7 @@ Keep MIDI mode contingent on ASF driver availability (drop only if ASF refuses),
 
 Runtime descriptor selector (path ii) vs. multi-build (path i)?
 
-- [ ] ✅ Approve as proposed (try runtime first; fall back to multi-build with documented criteria amendment)
+- [x ] ✅ Approve as proposed (try runtime first; fall back to multi-build with documented criteria amendment)
 - [ ] ❌ Reject — go straight to multi-build, ship multiple `.uf2` files
 - [ ] 🔄 Modify (see comments)
 
@@ -372,7 +372,7 @@ Runtime descriptor selector (path ii) vs. multi-build (path i)?
 
 Use lowercase ASCII for new commands (`'m'`, `'b'`, `'k'`, `'p'`, `'h'`, `'v'`, `'j'`, `'o'`)?
 
-- [ ] ✅ Approve as proposed
+- [x ] ✅ Approve as proposed
 - [ ] ❌ Reject — use a sub-byte scheme like `0x01 0xFF <feature_id> <subcmd>`
 - [ ] 🔄 Modify (see comments)
 
@@ -387,7 +387,7 @@ Use lowercase ASCII for new commands (`'m'`, `'b'`, `'k'`, `'p'`, `'h'`, `'v'`, 
 
 Bump once (wipe EEPROM once, layout reserves space for both F07 and F09)?
 
-- [ ] ✅ Approve as proposed (one bump, one wipe)
+- [x ] ✅ Approve as proposed (one bump, one wipe)
 - [ ] ❌ Reject — two separate bumps, two wipes
 - [ ] 🔄 Modify (see comments)
 
@@ -402,7 +402,7 @@ Bump once (wipe EEPROM once, layout reserves space for both F07 and F09)?
 
 Click always fires after `send_keys()`, including when bridges have suppressed the takeover animation?
 
-- [ ] ✅ Approve as proposed (always click)
+- [x ] ✅ Approve as proposed (always click)
 - [ ] ❌ Reject — keep on-device click muted whenever firmware takeover-click fires; only click as a "gap-filler"
 - [ ] 🔄 Modify (see comments)
 
@@ -417,7 +417,7 @@ Click always fires after `send_keys()`, including when bridges have suppressed t
 
 New pattern preempts running pattern (cancel + start fresh), vs. queue?
 
-- [ ] ✅ Approve as proposed (preempt)
+- [x ] ✅ Approve as proposed (preempt)
 - [ ] ❌ Reject — queue patterns
 - [ ] 🔄 Modify (see comments)
 
