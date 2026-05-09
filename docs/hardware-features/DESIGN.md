@@ -226,13 +226,12 @@ Modes selected at boot (from F10):
 
 | Mode | bcdDevice | Interfaces                          | Endpoints |
 |------|-----------|-------------------------------------|-----------|
-| 0 (default) | 0x0100 | CDC + HID-KB + HID-Mouse + WebUSB | 5 (EP1–EP5) |
-| 1 (kbd-only) | 0x0101 | HID-KB                            | 1 (EP4) |
-| 2 (kbd+mouse) | 0x0102 | HID-KB + HID-Mouse                | 2 (EP4, EP5) |
-| 3 (MIDI+CDC) | 0x0103 | CDC + MIDI                        | 4 (EP1–EP3, EP6) |
-| 4 (CDC-only) | 0x0104 | CDC                                | 3 (EP1–EP3) |
+| 0 (default)   | 0x0100 | CDC + HID-KB + HID-Mouse + WebUSB | 5 (EP1–EP5) |
+| 1 (kbd-only)  | 0x0101 | HID-KB                            | 1 (EP4)     |
+| 2 (kbd+mouse) | 0x0102 | HID-KB + HID-Mouse                | 2 (EP4, EP5)|
+| 3 (CDC-only)  | 0x0103 | CDC                               | 3 (EP1–EP3) |
 
-Mode 3 (MIDI) is the most invasive — needs the ASF MIDI class driver linked in. **If that driver isn't available in the local ASF tree, we drop MIDI from F10's scope**, list it as a known limitation, and ship modes 0/1/2/4. Verify ASF availability before F10 starts.
+> **MIDI mode dropped per [Q2 decision](#q2-f10-midi-mode-scope--resolved-drop-midi)** (2026-05-09). Vendoring the ASF MIDI class driver isn't worth the complexity for this batch. F10 ships 4 modes total; bcdDevice 0x0103 is reused for what was previously labeled "Mode 4 (CDC-only)."
 
 ### `bcdDevice` rotation
 
@@ -322,12 +321,27 @@ If F07 ends up not needing EEPROM (e.g., we move vault to RAM-only too), the bum
 
 > Tick a box for each question. Use **🔄 Modify** if you want a tweak rather than a clean approve/reject. Use the master tracker at [`REVIEW.md`](REVIEW.md) to see overall progress.
 
+### 📒 Decision log
+
+| Date | Question | Decision | Decided by |
+|------|----------|----------|------------|
+| 2026-05-09 | Q1 EEPROM-cap | Accept reduced vault (2×16) + TOTP (1 slot, 4-char label) | dallan |
+| 2026-05-09 | Q2 MIDI mode  | **Drop** MIDI from F10 scope — ship 4 modes only           | dallan |
+| 2026-05-09 | Q3 F10 path   | Runtime descriptor selector first, multi-build fallback   | dallan |
+| 2026-05-09 | Q4 Letter NS  | Lowercase ASCII for new commands                          | dallan |
+| 2026-05-09 | Q5 FW bump    | Single bump for F07 + F09                                 | dallan |
+| 2026-05-09 | Q6 F03 click  | Always click after `send_keys()`                          | dallan |
+| 2026-05-09 | Q7 F04 ptn    | Preempt running pattern on new request                    | dallan |
+| 2026-05-09 | Q8 F08 dflt   | (resolved by F08 redesign — no EEPROM bit)                | dallan |
+
+All cross-cutting questions resolved. Per-feature questions remain — see [`REVIEW.md`](REVIEW.md).
+
 <a id="q1-eeprom-cap-policy"></a>
-### Q1 — EEPROM-cap policy
+### Q1 — EEPROM-cap policy ✅ resolved
 
 Accept reduced vault (2 × 16 pairs) and reduced TOTP (1 slot, 4-char label) to avoid blowing the 260-byte EEPROM cap?
 
-- [x ] ✅ Approve as proposed (accept reduced sizes)
+- [x] ✅ Approve as proposed (accept reduced sizes)
 - [ ] ❌ Reject — pick alternative (i) or (ii) from §3
 - [ ] 🔄 Modify (see comments)
 
@@ -338,12 +352,12 @@ Accept reduced vault (2 × 16 pairs) and reduced TOTP (1 slot, 4-char label) to 
 ---
 
 <a id="q2-f10-midi-mode-scope"></a>
-### Q2 — F10 MIDI mode scope
+### Q2 — F10 MIDI mode scope ✅ resolved (drop MIDI)
 
 Keep MIDI mode contingent on ASF driver availability (drop only if ASF refuses), or drop now and ship 4 modes (default / kbd / kbd+mouse / cdc)?
 
 - [ ] ✅ Approve as proposed (keep, drop only if ASF refuses)
-- [x ] ❌ Drop now — vendor MIDI driver is not worth the complexity
+- [x] ❌ Drop now — vendor MIDI driver is not worth the complexity
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
@@ -353,11 +367,11 @@ Keep MIDI mode contingent on ASF driver availability (drop only if ASF refuses),
 ---
 
 <a id="q3-f10-implementation-path"></a>
-### Q3 — F10 implementation path
+### Q3 — F10 implementation path ✅ resolved
 
 Runtime descriptor selector (path ii) vs. multi-build (path i)?
 
-- [x ] ✅ Approve as proposed (try runtime first; fall back to multi-build with documented criteria amendment)
+- [x] ✅ Approve as proposed (try runtime first; fall back to multi-build with documented criteria amendment)
 - [ ] ❌ Reject — go straight to multi-build, ship multiple `.uf2` files
 - [ ] 🔄 Modify (see comments)
 
@@ -368,11 +382,11 @@ Runtime descriptor selector (path ii) vs. multi-build (path i)?
 ---
 
 <a id="q4-lowercase-letter-namespace"></a>
-### Q4 — Lowercase letter namespace
+### Q4 — Lowercase letter namespace ✅ resolved
 
 Use lowercase ASCII for new commands (`'m'`, `'b'`, `'k'`, `'p'`, `'h'`, `'v'`, `'j'`, `'o'`)?
 
-- [x ] ✅ Approve as proposed
+- [x] ✅ Approve as proposed
 - [ ] ❌ Reject — use a sub-byte scheme like `0x01 0xFF <feature_id> <subcmd>`
 - [ ] 🔄 Modify (see comments)
 
@@ -383,11 +397,11 @@ Use lowercase ASCII for new commands (`'m'`, `'b'`, `'k'`, `'p'`, `'h'`, `'v'`, 
 ---
 
 <a id="q5-single-firmware-version-bump"></a>
-### Q5 — Single FIRMWARE_VERSION bump for F07 + F09
+### Q5 — Single FIRMWARE_VERSION bump for F07 + F09 ✅ resolved
 
 Bump once (wipe EEPROM once, layout reserves space for both F07 and F09)?
 
-- [x ] ✅ Approve as proposed (one bump, one wipe)
+- [x] ✅ Approve as proposed (one bump, one wipe)
 - [ ] ❌ Reject — two separate bumps, two wipes
 - [ ] 🔄 Modify (see comments)
 
@@ -398,11 +412,11 @@ Bump once (wipe EEPROM once, layout reserves space for both F07 and F09)?
 ---
 
 <a id="q6-f03-default-on-under-bridge-takeover"></a>
-### Q6 — F03 default-on when bridges have taken over LEDs
+### Q6 — F03 default-on when bridges have taken over LEDs ✅ resolved
 
 Click always fires after `send_keys()`, including when bridges have suppressed the takeover animation?
 
-- [x ] ✅ Approve as proposed (always click)
+- [x] ✅ Approve as proposed (always click)
 - [ ] ❌ Reject — keep on-device click muted whenever firmware takeover-click fires; only click as a "gap-filler"
 - [ ] 🔄 Modify (see comments)
 
@@ -413,11 +427,11 @@ Click always fires after `send_keys()`, including when bridges have suppressed t
 ---
 
 <a id="q7-f04-pattern-interruption"></a>
-### Q7 — F04 pattern interruption
+### Q7 — F04 pattern interruption ✅ resolved
 
 New pattern preempts running pattern (cancel + start fresh), vs. queue?
 
-- [x ] ✅ Approve as proposed (preempt)
+- [x] ✅ Approve as proposed (preempt)
 - [ ] ❌ Reject — queue patterns
 - [ ] 🔄 Modify (see comments)
 

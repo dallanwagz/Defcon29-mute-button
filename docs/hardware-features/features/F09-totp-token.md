@@ -142,19 +142,9 @@ Bridge ships with a host-side reference TOTP implementation that we diff the fir
 ### Open questions
 
 <a id="f09-q1-one-slot-only"></a>
-#### Q1 — One TOTP slot only
+#### Q1 — One TOTP slot only ✅ resolved
 
-1 slot × 20-byte key × 4-char label (vs. original 2 × 16-char)?
-
-> Cross-cuts to [DESIGN.md Q1](../DESIGN.md#q1-eeprom-cap-policy).
-
-- [ ] ✅ Approve as proposed (1 slot)
-- [ ] ❌ Reject — push back to original spec, accept rework
-- [ ] 🔄 Modify (see comments)
-
-**Comments:**
-
-**Reviewed by:** _ _   **Date:** _ _
+**Resolution:** **1 slot × 20-byte key × 4-char label.** Per [DESIGN.md Q1](../DESIGN.md#q1-eeprom-cap-policy--resolved) (2026-05-09).
 
 ---
 

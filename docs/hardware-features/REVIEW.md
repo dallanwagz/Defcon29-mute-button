@@ -7,15 +7,15 @@ Single-page master checklist for the entire 11-feature batch. Every checkbox lin
 > - Use the matrix at the bottom for at-a-glance status; details live in each linked file.
 > - When all open questions for a feature are resolved, mark its row in the Sign-off matrix.
 
-## Cross-cutting questions ([`DESIGN.md §9`](DESIGN.md#9-open-cross-cutting-questions))
+## Cross-cutting questions ([`DESIGN.md §9`](DESIGN.md#9-open-cross-cutting-questions)) ✅ all resolved 2026-05-09
 
-- [ ] [Q1 — EEPROM-cap policy](DESIGN.md#q1-eeprom-cap-policy)
-- [ ] [Q2 — F10 MIDI mode scope](DESIGN.md#q2-f10-midi-mode-scope)
-- [ ] [Q3 — F10 implementation path](DESIGN.md#q3-f10-implementation-path)
-- [ ] [Q4 — Lowercase letter namespace](DESIGN.md#q4-lowercase-letter-namespace)
-- [ ] [Q5 — Single FIRMWARE_VERSION bump for F07+F09](DESIGN.md#q5-single-firmware-version-bump)
-- [ ] [Q6 — F03 default-on under bridge takeover](DESIGN.md#q6-f03-default-on-under-bridge-takeover)
-- [ ] [Q7 — F04 pattern interruption](DESIGN.md#q7-f04-pattern-interruption)
+- [x] [Q1 — EEPROM-cap policy](DESIGN.md#q1-eeprom-cap-policy) → reduced sizing accepted
+- [x] [Q2 — F10 MIDI mode scope](DESIGN.md#q2-f10-midi-mode-scope) → **MIDI dropped**
+- [x] [Q3 — F10 implementation path](DESIGN.md#q3-f10-implementation-path) → runtime first
+- [x] [Q4 — Lowercase letter namespace](DESIGN.md#q4-lowercase-letter-namespace) → approved
+- [x] [Q5 — Single FIRMWARE_VERSION bump for F07+F09](DESIGN.md#q5-single-firmware-version-bump) → approved
+- [x] [Q6 — F03 default-on under bridge takeover](DESIGN.md#q6-f03-default-on-under-bridge-takeover) → always click
+- [x] [Q7 — F04 pattern interruption](DESIGN.md#q7-f04-pattern-interruption) → preempt
 - [x] ~~Q8 — F08 jiggler default state~~ — *resolved by F08 redesign*
 
 ## Per-feature open questions
@@ -53,7 +53,7 @@ Single-page master checklist for the entire 11-feature batch. Every checkbox lin
 
 ### F07 — Rubber-ducky vault ([file](features/F07-rubber-ducky-vault.md))
 
-- [ ] [Q1 — Reduced sizing (cross-cuts to DESIGN Q1)](features/F07-rubber-ducky-vault.md#f07-q1-reduced-sizing)
+- [x] ~~Q1 — Reduced sizing~~ → resolved via DESIGN Q1
 - [ ] [Q2 — Wipe vs. migrate EEPROM](features/F07-rubber-ducky-vault.md#f07-q2-wipe-vs-migrate)
 
 ### F08 — Stay Awake ([file](features/F08-mouse-jiggler.md))
@@ -68,14 +68,14 @@ Single-page master checklist for the entire 11-feature batch. Every checkbox lin
 
 ### F09 — TOTP token ([file](features/F09-totp-token.md))
 
-- [ ] [Q1 — One slot only (cross-cuts to DESIGN Q1)](features/F09-totp-token.md#f09-q1-one-slot-only)
+- [x] ~~Q1 — One slot only~~ → resolved via DESIGN Q1
 - [ ] [Q2 — TOTP digit count](features/F09-totp-token.md#f09-q2-digit-count)
 
 ### F10 — HID class switch ([file](features/F10-hid-class-switch.md))
 
-- [ ] [Q1 — Implementation path (cross-cuts to DESIGN Q3)](features/F10-hid-class-switch.md#f10-q1-path-runtime-vs-multibuild)
-- [ ] [Q2 — MIDI mode scope (cross-cuts to DESIGN Q2)](features/F10-hid-class-switch.md#f10-q2-midi-scope)
-- [ ] [Q3 — Mode 4 chord button assignment](features/F10-hid-class-switch.md#f10-q3-mode-4-chord)
+- [x] ~~Q1 — Implementation path~~ → resolved via DESIGN Q3
+- [x] ~~Q2 — MIDI mode scope~~ → resolved via DESIGN Q2 (**dropped**)
+- [ ] [Q3 — Mode 3 chord button assignment](features/F10-hid-class-switch.md#f10-q3-mode-4-chord)
 - [ ] [Q4 — Persistent mode override (defer?)](features/F10-hid-class-switch.md#f10-q4-persistent-mode-override)
 
 ### F11 — WebUSB config UI ([file](features/F11-webusb-config-ui.md))

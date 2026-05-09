@@ -129,19 +129,9 @@ Document loudly in user-facing release notes.
 ### Open questions
 
 <a id="f07-q1-reduced-sizing"></a>
-#### Q1 — Reduced sizing
+#### Q1 — Reduced sizing ✅ resolved
 
-Vault: 2 slots × 16 (mod, key) pairs (vs. original spec 4 × 32)?
-
-> Cross-cuts to [DESIGN.md Q1](../DESIGN.md#q1-eeprom-cap-policy). Resolve there for the cross-feature decision; this checkbox confirms F07 specifically.
-
-- [ ] ✅ Approve as proposed (2 × 16 pairs)
-- [ ] ❌ Reject — push back to original spec, accept rework
-- [ ] 🔄 Modify (see comments)
-
-**Comments:**
-
-**Reviewed by:** _ _   **Date:** _ _
+**Resolution:** Vault is **2 slots × 16 (mod, key) pairs**. Per [DESIGN.md Q1](../DESIGN.md#q1-eeprom-cap-policy--resolved) (2026-05-09).
 
 ---
 
