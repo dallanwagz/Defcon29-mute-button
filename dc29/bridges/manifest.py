@@ -81,6 +81,11 @@ def _make_beat_strobe(badge: "BadgeAPI", cfg: "Config") -> "BaseBridge":
     return BeatStrobeBridge(badge, cfg)
 
 
+def _make_stay_awake(badge: "BadgeAPI", cfg: "Config") -> "BaseBridge":
+    from dc29.bridges.stay_awake import StayAwakeBridge
+    return StayAwakeBridge(badge, cfg)
+
+
 def _make_generic(page_def):
     """Closure over a PageDef to produce a factory."""
     from dc29.bridges.generic import GenericFocusBridge
@@ -122,6 +127,11 @@ BRIDGE_MANIFEST: list[BridgeSpec] = [
         name="beat-strobe",
         description="Tight 200 Hz beat strobe — DJ booth vibe (BlackHole + FFT)",
         factory=_make_beat_strobe,
+    ),
+    BridgeSpec(
+        name="stay-awake",
+        description="Stay Awake — keep the host awake on a timer with optional LED viz",
+        factory=_make_stay_awake,
     ),
     BridgeSpec(
         name="teams",

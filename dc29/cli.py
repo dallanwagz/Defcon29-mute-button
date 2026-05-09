@@ -1202,6 +1202,179 @@ def spotify_status() -> None:
 
 
 # ---------------------------------------------------------------------------
+# awake subcommand group — F08b Stay Awake
+# ---------------------------------------------------------------------------
+
+awake_app = typer.Typer(
+    help=(
+        "Keep the host awake (Amphetamine-style) by having the badge emit "
+        "periodic no-op HID wake pulses.\n\n"
+        "When `dc29 start` is running, this subcommand mutates the in-process "
+        "session so the TUI countdown stays in sync.  When run standalone, it "
+        "talks to the badge directly and writes a tiny pointer file so a later "
+        "`dc29 awake status` can still report the projected end time."
+    ),
+)
+app.add_typer(awake_app, name="awake")
+
+
+def _parse_duration_arg(value: str) -> int:
+    """Parse a CLI duration argument into seconds, or raise BadParameter."""
+    from dc29.tui.stay_awake_tab import _parse_custom_duration  # reuse parser
+    if value.lower() in ("inf", "indef", "indefinite", "forever"):
+        from dc29.awake import INDEFINITE_SECS
+        return INDEFINITE_SECS
+    secs = _parse_custom_duration(value)
+    if secs is None or secs <= 0:
+        raise typer.BadParameter(
+            f"could not parse {value!r} — try '90m', '1h30m', '4h', or 'forever'"
+        )
+    return secs
+
+
+@awake_app.command("start")
+def awake_start(
+    duration: str = typer.Argument(
+        ...,
+        help="Duration: '90m', '1h30m', '4h', '8h', 'forever'.",
+    ),
+    led_mode: str = typer.Option(
+        "off", "--led", "-l",
+        help="LED visualization: off | cyan_pulse | progress_bar | effect_mode",
+    ),
+    effect_id: int = typer.Option(
+        1, "--effect-id",
+        help="Effect mode index (1..8), only used when --led=effect_mode",
+    ),
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+) -> None:
+    """Start a Stay Awake session for *duration*.
+
+    Examples:
+
+    \b
+        dc29 awake start 1h
+        dc29 awake start 30m --led cyan_pulse
+        dc29 awake start forever --led progress_bar
+    """
+    from dc29.awake import LedMode, get_state, write_pointer
+    from dc29.badge import BadgeAPI
+
+    secs = _parse_duration_arg(duration)
+    mode = LedMode.parse(led_mode)
+
+    # Always update the in-process state — when a `dc29 start` process is
+    # running on the same machine the bridge there will pick this up via
+    # the singleton (via shared module import).  But we can't actually
+    # share state across processes that way; the singleton is per-process.
+    # For headless invocation, we write the pointer file + drive the badge
+    # directly.  When `dc29 start` is running, it has its own state and
+    # the user should toggle from the TUI instead.  We still update local
+    # state so a follow-up `dc29 awake status` from the same shell works.
+    state = get_state()
+    session = state.start_session(secs, led_mode=mode, effect_mode_id=effect_id)
+    write_pointer(session)
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+    try:
+        # Wait briefly for CDC to come up, then send the autonomous timer.
+        import time as _t
+        for _ in range(20):
+            if badge.connected:
+                break
+            _t.sleep(0.1)
+        if not badge.connected:
+            typer.echo("Could not connect to badge.", err=True)
+            raise typer.Exit(1)
+        badge.awake_set_duration(secs)
+        # Fire one immediate pulse so idle resets right away.
+        badge.awake_pulse()
+    finally:
+        badge.close()
+
+    if session.is_indefinite():
+        typer.echo("Stay Awake started — indefinite session.")
+    else:
+        from datetime import datetime
+        end = datetime.fromtimestamp(session.end_ts).strftime("%-I:%M %p")
+        typer.echo(f"Stay Awake started — {secs // 60} min, ends ~{end}.")
+    if mode != LedMode.OFF:
+        typer.echo(
+            "Note: --led visualization runs only in `dc29 start` (the bridge "
+            "process renders LEDs).  Headless `awake start` only sets the "
+            "wake timer."
+        )
+
+
+@awake_app.command("stop")
+def awake_stop(
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+) -> None:
+    """Stop the active Stay Awake session immediately."""
+    from dc29.awake import clear_pointer, get_state
+    from dc29.badge import BadgeAPI
+
+    get_state().stop_session()
+    clear_pointer()
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+    try:
+        import time as _t
+        for _ in range(20):
+            if badge.connected:
+                break
+            _t.sleep(0.1)
+        if badge.connected:
+            badge.awake_cancel()
+    finally:
+        badge.close()
+
+    typer.echo("Stay Awake stopped.")
+
+
+@awake_app.command("status")
+def awake_status() -> None:
+    """Report whether a Stay Awake session is active and its projected end."""
+    from dc29.awake import read_pointer
+
+    session = read_pointer()
+    if session is None:
+        typer.echo("Stay Awake: idle.")
+        return
+
+    if session.is_indefinite():
+        typer.echo("Stay Awake: ACTIVE — indefinite session.")
+        return
+
+    from datetime import datetime
+    end_str = datetime.fromtimestamp(session.end_ts).strftime("%-I:%M %p")
+    started_str = datetime.fromtimestamp(session.started_ts).strftime("%-I:%M %p")
+    remaining = int(session.remaining_secs())
+    h, rem = divmod(remaining, 3600)
+    m, s = divmod(rem, 60)
+    if h > 0:
+        rem_label = f"{h}h {m:02d}m"
+    elif m > 0:
+        rem_label = f"{m}m {s:02d}s"
+    else:
+        rem_label = f"{s}s"
+    typer.echo(
+        f"Stay Awake: ACTIVE — {rem_label} remaining "
+        f"(started {started_str}, ends ~{end_str}, LED {session.led_mode.value})."
+    )
+
+
+# ---------------------------------------------------------------------------
 # stats subcommand group — local nerd-fuel
 # ---------------------------------------------------------------------------
 

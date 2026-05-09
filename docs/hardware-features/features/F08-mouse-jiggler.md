@@ -1,6 +1,6 @@
 # F08 — Stay Awake (mouse jiggler with Amphetamine-style UX)
 
-> Status: **F08a-lite hardware-verified** (path 2 — keyboard wake instead of HID-Mouse); F08b not started · Risk: **medium** · Owner: firmware + bridge + TUI
+> Status: **F08a-lite hardware-verified**, **F08b CLI smoke-tested** (variant A TUI shipped, awaits manual TUI test) · Risk: **medium** · Owner: firmware + bridge + TUI
 
 ## Goal
 
@@ -388,12 +388,17 @@ _To be filled in after manual verification._
 
 #### Implementation phase
 
-- [ ] Bridge code complete
-- [ ] TUI tab complete
-- [ ] CLI subcommand group complete
-- [ ] Manual full-flow test passed (all items in Test plan)
+- [x] Bridge code complete (`dc29/bridges/stay_awake.py` + shared state in `dc29/awake.py`)
+- [x] TUI tab complete (`dc29/tui/stay_awake_tab.py`, variant A from F08b mockups; tab slot 9 + `[9]` keybind)
+- [x] CLI subcommand group complete (`dc29 awake start <duration>` / `stop` / `status`; reuses TUI duration parser; auto-spawn-style — talks to badge directly when no `dc29 start` running)
+- [x] Manual full-flow test (CLI smoke) — `dc29 awake start 1m` → idle reset at +30 s pulse confirmed via `ioreg HIDIdleTime`; `awake status` countdown ticks correctly; `awake stop` cleans up. **Pending**: manual TUI walkthrough in `dc29 start` (LED visualization modes — Cyan pulse, Progress bar, Effect mode — observed visually).
 - [ ] Implementation notes filled in
 - [ ] Testing notes filled in
+
+**F08b deviations from spec:**
+- Per-process state model: AwakeState is a **per-process singleton** (`dc29.awake.get_state()`), not cross-process. CLI uses a `~/.config/dc29/awake_session.json` pointer file so headless `awake start/status` from different shells stay coherent. When `dc29 start` is running, the user is expected to drive Stay Awake via the TUI tab; CLI from another shell would still hit the badge directly but not appear in the TUI countdown.
+- Indefinite duration is `2**32 - 1` seconds (not a special sentinel), so the firmware sees a normal duration value. TUI / CLI display "Indefinite" instead of HH:MM:SS.
+- `dc29 awake start --led <mode>` prints a hint that LED visualization only renders inside `dc29 start` (the bridge process). Headless invocation only sets the wake timer.
 
 **Implementation reviewed by:** _ _   **Date:** _ _
 

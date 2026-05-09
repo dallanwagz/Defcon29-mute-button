@@ -2252,6 +2252,7 @@ class BadgeTUI(App):
         Binding("6", "switch_tab('stats')", "Stats", show=False),
         Binding("7", "switch_tab('log')", "Log", show=False),
         Binding("8", "switch_tab('leds')", "LEDs", show=False),
+        Binding("9", "switch_tab('stay-awake')", "Stay Awake", show=False),
         Binding("r", "rainbow", "Rainbow", show=False),
         Binding("b", "breathe", "Breathe", show=False),
         Binding("o", "effect_off", "Effect Off", show=False),
@@ -2440,6 +2441,9 @@ class BadgeTUI(App):
                 yield LogTab()
             with TabPane("LEDs [8]", id="leds"):
                 yield LEDsTab()
+            with TabPane("Stay Awake [9]", id="stay-awake"):
+                from dc29.tui.stay_awake_tab import StayAwakeTab
+                yield StayAwakeTab()
         yield Footer()
 
     # ------------------------------------------------------------------
