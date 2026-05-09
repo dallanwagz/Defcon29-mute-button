@@ -50,4 +50,32 @@ void hid_burst_cancel(void);
 void hid_burst_tick(void);
 
 
+/* ─── F07 — Rubber-ducky vault ──────────────────────────────────────────
+ * Two EEPROM slots, each holding up to VAULT_MAX_PAIRS (16) (mod, key)
+ * pairs.  vault_fire() reads the slot into a local buffer and dispatches
+ * via hid_burst() (F06).
+ *
+ * NOTE: vault contents are stored in **plaintext** EEPROM.  Anyone with
+ * physical access can dump the badge via UF2 mass-storage.  Use only
+ * for stage-demo boilerplate, never for real credentials.
+ */
+
+typedef enum {
+	VAULT_OK         = 0,
+	VAULT_BAD_SLOT   = 1,   /* slot >= VAULT_SLOTS */
+	VAULT_TOO_LONG   = 2,   /* n_pairs > VAULT_MAX_PAIRS */
+	VAULT_EMPTY      = 3,   /* fire on a slot with len==0 */
+	VAULT_BUSY       = 4,   /* underlying hid_burst returned BURST_BUSY */
+} vault_result_t;
+
+vault_result_t vault_write(uint8_t slot, const uint8_t *pairs, uint8_t n_pairs);
+vault_result_t vault_clear(uint8_t slot);
+vault_result_t vault_fire(uint8_t slot);
+
+/* Returns slot length (0 if empty); also writes up to `preview_max`
+ * bytes of payload into `preview_out` (truncated for privacy on the
+ * list command). */
+uint8_t vault_read_preview(uint8_t slot, uint8_t *preview_out, uint8_t preview_max);
+
+
 #endif /* KEYS_H_ */

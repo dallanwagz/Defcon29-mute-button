@@ -203,6 +203,39 @@ gone — the haptic click fills that gap.
 RAM-only; default returns to enabled on every reboot.
 """
 
+CMD_VAULT: int = ord("v")
+"""
+``0x01 'v' <sub> ...`` — F07 rubber-ducky vault.
+
+Two EEPROM-resident slots, each holding up to :data:`VAULT_MAX_PAIRS`
+(16) ``(modifier, key)`` pairs.  Firing a slot dispatches via the F06
+:data:`CMD_HID_BURST` path, so the badge can type pre-recorded
+boilerplate without a host-side bridge.
+
+**Security**: vault contents are stored in *plaintext* EEPROM and can
+be dumped via UF2 mass-storage by anyone with physical access.  Use
+only for stage-demo strings, never for real credentials.
+
+Sub-commands:
+
+* ``'v' 'W' <slot> <n_pairs> <pair1_mod> <pair1_key> ... <pairN_mod> <pairN_key>``
+  Write *n_pairs* into *slot*.  ``n_pairs == 0`` clears the slot
+  (same as ``'C'``).  ``n_pairs > 16`` is dropped silently on the
+  firmware side; the host helper guards too.
+* ``'v' 'F' <slot>`` — fire the macro stored in *slot* (no-op if empty).
+* ``'v' 'C' <slot>`` — clear *slot* (set length to 0).
+* ``'v' 'L'`` — list all slots.  Replies with one
+  ``0x01 'b' 'V' <slot> <len> <8 preview bytes>`` per slot.  Preview
+  is the first 8 payload bytes (~4 keystrokes); never echoes more so
+  full-payload screen-shoulder leakage is bounded.
+"""
+
+VAULT_SLOTS: int = 2
+"""Number of vault slots in the v3 EEPROM layout."""
+
+VAULT_MAX_PAIRS: int = 16
+"""Maximum (modifier, key) pairs per vault slot."""
+
 CMD_HID_BURST: int = ord("h")
 """
 ``0x01 'h' <n_le16> <mod1> <key1> ... <modN> <keyN>`` — F06 hyper-fast

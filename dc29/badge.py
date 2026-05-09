@@ -48,7 +48,10 @@ from dc29.protocol import (
     CMD_HID_BURST,
     CMD_JIGGLER,
     CMD_MOD_TABLE,
+    CMD_VAULT,
     MAX_BURST_PAIRS,
+    VAULT_MAX_PAIRS,
+    VAULT_SLOTS,
     CMD_SET_KEY,
     CMD_QUERY_KEY,
     CMD_WLED_SET,
@@ -241,6 +244,10 @@ class BadgeAPI:
         """Called when the badge firmware effect mode changes: ``(mode,)``."""
 
         self.on_chord: Optional[Callable[[int], None]] = None
+
+        # F07 vault list reply.  Fired once per slot in response to vault_list().
+        # Args: (slot: int, length: int, preview: bytes (8 bytes, zero-padded)).
+        self.on_vault_list_entry: Optional[Callable[[int, int, bytes], None]] = None
         """Called when a button chord fires: ``(chord_type,)`` where 1=short, 2=long."""
 
         self.on_connect: Optional[Callable[[], None]] = None
@@ -548,6 +555,91 @@ class BadgeAPI:
         """
         cmd = bytes([ESCAPE, CMD_HAPTIC_CLICK, 1 if enabled else 0])
         self._write(cmd)
+
+    def vault_write(self, slot: int, pairs) -> None:
+        """Write *pairs* to F07 vault *slot* (0..VAULT_SLOTS-1).
+
+        Args:
+            slot: 0..VAULT_SLOTS-1.
+            pairs: iterable of ``(modifier, key)`` tuples, length 0..16.
+                Length 0 clears the slot; >16 raises ValueError.
+
+        The slot is persisted to EEPROM and survives reboots.  Vault
+        contents are stored in plaintext — see security note in
+        :data:`~dc29.protocol.CMD_VAULT`.
+        """
+        if not (0 <= int(slot) < VAULT_SLOTS):
+            raise ValueError(f"slot must be 0..{VAULT_SLOTS - 1}, got {slot}")
+        flat = []
+        for mod, key in pairs:
+            flat.append(int(mod) & 0xFF)
+            flat.append(int(key) & 0xFF)
+        n_pairs = len(flat) // 2
+        if n_pairs > VAULT_MAX_PAIRS:
+            raise ValueError(
+                f"vault payload too long: {n_pairs} pairs (max {VAULT_MAX_PAIRS})"
+            )
+        buf = bytearray([ESCAPE, CMD_VAULT, ord("W"), int(slot) & 0xFF, n_pairs & 0xFF])
+        buf.extend(flat)
+        self._write(bytes(buf))
+
+    def vault_write_text(self, slot: int, text: str) -> int:
+        """Pack *text* via the same ASCII→HID table as :meth:`type_string`
+        and write it to vault *slot*.  Returns the number of pairs stored
+        (≤ VAULT_MAX_PAIRS — over-length text is **rejected** with
+        ValueError, not truncated, since silent truncation is hostile)."""
+        pairs = [p for ch in text for p in (_ascii_to_hid_pair(ch),) if p is not None]
+        if len(pairs) > VAULT_MAX_PAIRS:
+            raise ValueError(
+                f"text packs to {len(pairs)} HID pairs but vault slot holds "
+                f"only {VAULT_MAX_PAIRS}.  Trim the text or split across slots."
+            )
+        self.vault_write(slot, pairs)
+        return len(pairs)
+
+    def vault_fire(self, slot: int) -> None:
+        """Fire (type) the macro stored in *slot*.  No-op if empty."""
+        if not (0 <= int(slot) < VAULT_SLOTS):
+            raise ValueError(f"slot must be 0..{VAULT_SLOTS - 1}, got {slot}")
+        self._write(bytes([ESCAPE, CMD_VAULT, ord("F"), int(slot) & 0xFF]))
+
+    def vault_clear(self, slot: int) -> None:
+        """Clear *slot* (set length to 0)."""
+        if not (0 <= int(slot) < VAULT_SLOTS):
+            raise ValueError(f"slot must be 0..{VAULT_SLOTS - 1}, got {slot}")
+        self._write(bytes([ESCAPE, CMD_VAULT, ord("C"), int(slot) & 0xFF]))
+
+    def vault_list(self, timeout: float = 0.5) -> "list[tuple[int, int, bytes]]":
+        """Synchronously list all vault slots.
+
+        Returns a list of ``(slot, length, preview)`` tuples sorted by
+        slot number.  *length* is the number of (mod, key) pairs stored;
+        *preview* is the first 8 payload bytes (zero-padded), for at-a-
+        glance "did I write the right thing?" checks without exposing
+        the full payload to over-the-shoulder observers.
+
+        Sends ``0x01 'v' 'L'`` and waits up to *timeout* seconds for
+        replies.  May return fewer than VAULT_SLOTS entries if the
+        firmware doesn't reply in time.
+        """
+        import threading
+        import time as _t
+        result: list[tuple[int, int, bytes]] = []
+        done = threading.Event()
+        prev_cb = self.on_vault_list_entry
+
+        def collect(slot: int, length: int, preview: bytes) -> None:
+            result.append((slot, length, preview))
+            if len(result) >= VAULT_SLOTS:
+                done.set()
+
+        self.on_vault_list_entry = collect
+        try:
+            self._write(bytes([ESCAPE, CMD_VAULT, ord("L")]))
+            done.wait(timeout)
+        finally:
+            self.on_vault_list_entry = prev_cb
+        return sorted(result)
 
     def hid_burst(self, pairs) -> None:
         """Fire a back-to-back HID burst on the badge (F06).
@@ -905,6 +997,9 @@ class BadgeAPI:
                     self._rx_args_needed = 3   # kind + btn_a + btn_b
                 elif kind in (ord('2'), ord('3'), ord('L')):
                     self._rx_args_needed = 2   # kind + btn
+                elif kind == ord('V'):
+                    # F07 vault list reply: kind + slot + len + 8 preview = 11 bytes
+                    self._rx_args_needed = 11
                 else:
                     self._rx_state = 0          # unknown kind — drop
                     return
@@ -982,6 +1077,18 @@ class BadgeAPI:
 
         elif cmd == EVT_BUTTON_EXT and len(args) >= 2:
             kind_byte = args[0]
+            # F07 vault list reply piggy-backs on the EVT_BUTTON_EXT 'b' channel
+            # with kind 'V' so we don't burn another command letter.
+            if kind_byte == ord('V') and len(args) == 11:
+                slot    = args[1]
+                length  = args[2]
+                preview = bytes(args[3:11])
+                if self.on_vault_list_entry is not None:
+                    try:
+                        self.on_vault_list_entry(slot, length, preview)
+                    except Exception:
+                        log.exception("on_vault_list_entry callback raised")
+                return
             kind_map = {ord('2'): 'double', ord('3'): 'triple', ord('L'): 'long', ord('C'): 'chord'}
             kind = kind_map.get(kind_byte)
             if kind is None:

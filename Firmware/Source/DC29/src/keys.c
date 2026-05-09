@@ -8,6 +8,7 @@
 #include "udi_hid_kbd.h"
 #include "udi_cdc.h"
 #include "pwm.h"
+#include "rww_eeprom.h"
 
 extern uint8_t keymap[231];
 extern uint8_t keymaplength;
@@ -244,6 +245,66 @@ void hid_burst_cancel(void){
 	_burst_cur_key       = 0;
 	_burst_cur_is_media  = false;
 }
+
+/* ─── F07 vault ─────────────────────────────────────────────────────────
+ * EEPROM offsets per main.h.  Each slot: 1-byte length followed by
+ * VAULT_PAYLOAD_BYTES bytes of (mod, key) pairs.  Length is the number
+ * of *pairs*, not bytes.  Length == 0 = empty slot. */
+
+static uint16_t _vault_slot_len_offset(uint8_t slot){
+	return (slot == 0) ? EEP_VAULT_SLOT0_LEN : EEP_VAULT_SLOT1_LEN;
+}
+
+static uint16_t _vault_slot_payload_offset(uint8_t slot){
+	return (slot == 0) ? EEP_VAULT_SLOT0_PAYLOAD : EEP_VAULT_SLOT1_PAYLOAD;
+}
+
+vault_result_t vault_write(uint8_t slot, const uint8_t *pairs, uint8_t n_pairs){
+	if(slot >= VAULT_SLOTS) return VAULT_BAD_SLOT;
+	if(n_pairs > VAULT_MAX_PAIRS) return VAULT_TOO_LONG;
+
+	uint8_t buf[VAULT_PAYLOAD_BYTES];
+	for(uint8_t i = 0; i < VAULT_PAYLOAD_BYTES; i++) buf[i] = 0;
+	for(uint8_t i = 0; i < (uint8_t)(n_pairs * 2); i++) buf[i] = pairs[i];
+
+	rww_eeprom_emulator_write_buffer(_vault_slot_len_offset(slot), &n_pairs, 1);
+	rww_eeprom_emulator_write_buffer(_vault_slot_payload_offset(slot), buf, VAULT_PAYLOAD_BYTES);
+	rww_eeprom_emulator_commit_page_buffer();
+	return VAULT_OK;
+}
+
+vault_result_t vault_clear(uint8_t slot){
+	if(slot >= VAULT_SLOTS) return VAULT_BAD_SLOT;
+	uint8_t zero = 0;
+	rww_eeprom_emulator_write_buffer(_vault_slot_len_offset(slot), &zero, 1);
+	rww_eeprom_emulator_commit_page_buffer();
+	return VAULT_OK;
+}
+
+vault_result_t vault_fire(uint8_t slot){
+	if(slot >= VAULT_SLOTS) return VAULT_BAD_SLOT;
+	uint8_t len = 0;
+	rww_eeprom_emulator_read_buffer(_vault_slot_len_offset(slot), &len, 1);
+	if(len == 0) return VAULT_EMPTY;
+	if(len > VAULT_MAX_PAIRS) return VAULT_TOO_LONG;
+	uint8_t buf[VAULT_PAYLOAD_BYTES];
+	rww_eeprom_emulator_read_buffer(_vault_slot_payload_offset(slot), buf, len * 2);
+	burst_result_t r = hid_burst(buf, len);
+	if(r == BURST_BUSY) return VAULT_BUSY;
+	return VAULT_OK;
+}
+
+uint8_t vault_read_preview(uint8_t slot, uint8_t *preview_out, uint8_t preview_max){
+	if(slot >= VAULT_SLOTS) return 0;
+	uint8_t len = 0;
+	rww_eeprom_emulator_read_buffer(_vault_slot_len_offset(slot), &len, 1);
+	if(len == 0 || preview_max == 0 || preview_out == NULL) return len;
+	uint8_t bytes_to_read = (uint8_t)(len * 2);
+	if(bytes_to_read > preview_max) bytes_to_read = preview_max;
+	rww_eeprom_emulator_read_buffer(_vault_slot_payload_offset(slot), preview_out, bytes_to_read);
+	return len;
+}
+
 
 void hid_burst_tick(void){
 	if(!burst_in_progress) return;

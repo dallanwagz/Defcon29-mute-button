@@ -1293,6 +1293,14 @@ void reset_eeprom(void){
 	rww_eeprom_emulator_write_buffer(EEP_LED_4_PRESSED_COLOR, leddata, 3);
 	
 	rww_eeprom_emulator_write_buffer(EEP_KEY_MAP, default_keymap, sizeof(default_keymap));
+
+	/* F07 vault — initialize both slots to empty (length 0). */
+	uint8_t zero = 0;
+	rww_eeprom_emulator_write_buffer(EEP_VAULT_SLOT0_LEN, &zero, 1);
+	rww_eeprom_emulator_write_buffer(EEP_VAULT_SLOT1_LEN, &zero, 1);
+	/* Settings flags byte — reserved, default 0. */
+	rww_eeprom_emulator_write_buffer(EEP_SETTINGS_FLAGS, &zero, 1);
+
 	rww_eeprom_emulator_commit_page_buffer();
 }
 

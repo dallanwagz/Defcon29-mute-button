@@ -1202,6 +1202,181 @@ def spotify_status() -> None:
 
 
 # ---------------------------------------------------------------------------
+# vault subcommand group — F07 rubber-ducky vault
+# ---------------------------------------------------------------------------
+
+vault_app = typer.Typer(
+    help=(
+        "Store + fire pre-recorded keystroke macros from the badge's EEPROM.\n\n"
+        "Two slots, each up to 16 (modifier, key) pairs (~32 plain ASCII chars).\n"
+        "WARNING: vault contents are stored in *plaintext* EEPROM and can be "
+        "dumped via UF2.  Use only for stage-demo strings, never real "
+        "credentials."
+    ),
+)
+app.add_typer(vault_app, name="vault")
+
+
+@vault_app.command("write")
+def vault_write_cmd(
+    slot: int = typer.Argument(..., help="Slot number, 0 or 1."),
+    text: Optional[str] = typer.Option(
+        None, "--text", "-t",
+        help="ASCII text to pack and store.  Converted via the same HID "
+             "table as `dc29 type`.  Mutually exclusive with --pairs.",
+    ),
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+) -> None:
+    """Write a vault slot.
+
+    Example:
+
+    \b
+        dc29 vault write 0 --text "hello world"
+    """
+    from dc29.badge import BadgeAPI
+    from dc29.protocol import VAULT_MAX_PAIRS, VAULT_SLOTS
+
+    if not (0 <= slot < VAULT_SLOTS):
+        typer.echo(f"slot must be 0..{VAULT_SLOTS - 1}", err=True)
+        raise typer.Exit(2)
+    if text is None:
+        typer.echo("--text is required (or --pairs in a future version)", err=True)
+        raise typer.Exit(2)
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+    try:
+        import time as _t
+        for _ in range(20):
+            if badge.connected:
+                break
+            _t.sleep(0.1)
+        if not badge.connected:
+            typer.echo("Could not connect to badge.", err=True)
+            raise typer.Exit(1)
+        try:
+            n = badge.vault_write_text(slot, text)
+        except ValueError as exc:
+            typer.echo(f"vault write rejected: {exc}", err=True)
+            raise typer.Exit(2)
+    finally:
+        badge.close()
+    typer.echo(f"Wrote {n} pairs to slot {slot}.")
+
+
+@vault_app.command("fire")
+def vault_fire_cmd(
+    slot: int = typer.Argument(..., help="Slot number, 0 or 1."),
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+) -> None:
+    """Fire (type) the macro stored in *slot* into the focused window."""
+    from dc29.badge import BadgeAPI
+    from dc29.protocol import VAULT_SLOTS
+
+    if not (0 <= slot < VAULT_SLOTS):
+        typer.echo(f"slot must be 0..{VAULT_SLOTS - 1}", err=True)
+        raise typer.Exit(2)
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+    try:
+        import time as _t
+        for _ in range(20):
+            if badge.connected:
+                break
+            _t.sleep(0.1)
+        if not badge.connected:
+            typer.echo("Could not connect to badge.", err=True)
+            raise typer.Exit(1)
+        badge.vault_fire(slot)
+        # Give the firmware time to actually drive the burst before we close
+        # the CDC port (16 pairs × ~10 ms = ~160 ms; pad to 500 ms).
+        _t.sleep(0.5)
+    finally:
+        badge.close()
+    typer.echo(f"Fired slot {slot}.")
+
+
+@vault_app.command("clear")
+def vault_clear_cmd(
+    slot: int = typer.Argument(..., help="Slot number, 0 or 1."),
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+) -> None:
+    """Clear (zero out) a vault slot."""
+    from dc29.badge import BadgeAPI
+    from dc29.protocol import VAULT_SLOTS
+
+    if not (0 <= slot < VAULT_SLOTS):
+        typer.echo(f"slot must be 0..{VAULT_SLOTS - 1}", err=True)
+        raise typer.Exit(2)
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+    try:
+        import time as _t
+        for _ in range(20):
+            if badge.connected:
+                break
+            _t.sleep(0.1)
+        if not badge.connected:
+            typer.echo("Could not connect to badge.", err=True)
+            raise typer.Exit(1)
+        badge.vault_clear(slot)
+    finally:
+        badge.close()
+    typer.echo(f"Cleared slot {slot}.")
+
+
+@vault_app.command("list")
+def vault_list_cmd(
+    port: Optional[str] = typer.Option(
+        None, "--port", "-p",
+        help="Badge serial port.  Auto-detected if omitted.",
+        envvar="DC29_PORT",
+    ),
+) -> None:
+    """List all vault slots with length + first-8-byte preview."""
+    from dc29.badge import BadgeAPI
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+    try:
+        import time as _t
+        for _ in range(20):
+            if badge.connected:
+                break
+            _t.sleep(0.1)
+        if not badge.connected:
+            typer.echo("Could not connect to badge.", err=True)
+            raise typer.Exit(1)
+        entries = badge.vault_list(timeout=1.0)
+    finally:
+        badge.close()
+    if not entries:
+        typer.echo("No reply from badge (timeout).")
+        return
+    for slot, length, preview in entries:
+        if length == 0:
+            typer.echo(f"  slot {slot}: empty")
+        else:
+            preview_hex = " ".join(f"{b:02X}" for b in preview)
+            typer.echo(f"  slot {slot}: {length} pairs  (preview: {preview_hex})")
+
+
+# ---------------------------------------------------------------------------
 # awake subcommand group — F08b Stay Awake
 # ---------------------------------------------------------------------------
 

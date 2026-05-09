@@ -1,6 +1,6 @@
 # F07 — Rubber-ducky vault (EEPROM keystroke macros)
 
-> Status: **planned** · Risk: **medium** · Owner: firmware + bridges
+> Status: **hardware-verified** · Risk: **medium** · Owner: firmware + bridges
 
 ## Goal
 
@@ -167,10 +167,17 @@ _To be filled in after manual verification._
 
 ### Implementation phase
 
-- [ ] Code complete
-- [ ] Build passes (≤ 56 KB)
-- [ ] FIRMWARE_VERSION bump verified — fresh boot wipes EEPROM cleanly
-- [ ] Manual hardware test passed (all items in Test plan above)
+- [x] Code complete (`Firmware/Source/DC29/src/{main.h,main.c,keys.{c,h},serialconsole.c}` + `dc29/{protocol,badge,cli}.py`)
+- [x] Build passes (≤ 56 KB) — text 51008 B; bss 6772 B (vault payloads share `_burst_recv_buf` from F06)
+- [x] FIRMWARE_VERSION bump 2 → 3 verified — fresh boot wiped EEPROM cleanly (LED defaults restored, vault both empty)
+- [x] Manual hardware test passed — verified 2026-05-09:
+   - `dc29 vault write 0 --text "hello F07"` → "Wrote 9 pairs to slot 0"
+   - `dc29 vault write 1 --text "second slot"` → "Wrote 11 pairs to slot 1"
+   - `dc29 vault list` → both slots reported with correct lengths and previews matching the ASCII (after the `reply[12]→[13]` array-size fix; original size silently dropped 13th byte and corrupted the slot-1 reply)
+   - `dc29 vault fire 0` and `dc29 vault fire 1` typed the correct strings into the focused terminal
+   - `dc29 vault clear 0` → list shows slot 0 empty, slot 1 still populated (independent slots)
+   - Over-length reject: 38-pair text rejected at host with a clear error
+   - Power-cycle persistence implicitly verified (re-flashing at the same FIRMWARE_VERSION preserved both slots' contents)
 - [ ] Implementation notes filled in
 - [ ] Testing notes filled in
 

@@ -45,7 +45,7 @@
 
 #define DEBUG 0 //debug code no longer fits in the available flash :(
 
-#define FIRMWARE_VERSION 2 //Only change if EEPROM layout changes
+#define FIRMWARE_VERSION 3 //Only change if EEPROM layout changes — bump 2→3 (2026-05-09) for F07 vault + F09 TOTP reservation per docs/hardware-features/DESIGN.md §3
 
 
 #define BUTTON1 PIN_PA04
@@ -91,7 +91,30 @@
 #define EEP_LED_3_PRESSED_COLOR 20 //3 BYTES
 #define EEP_LED_4_PRESSED_COLOR 23 //3 BYTES
 
-#define EEP_KEY_MAP 26 //MAX 234 BYTES (EEPROM is limited to 260 bytes)
+/* Settings flags byte — reserved by the v3 layout for future use (per
+ * DESIGN.md §3: bit0=haptic_click_default, bit2=splash, bit3=slider).
+ * No firmware reader yet; consumers gate behavior on the existing RAM
+ * flags.  Wired up by a follow-up feature. */
+#define EEP_SETTINGS_FLAGS 25 //1 BYTE (reserved, F03/F08 follow-up)
+
+#define EEP_KEY_MAP 26 //MAX 140 BYTES (was 234 pre-v3 — shrunk for F07/F09 layout, see DESIGN.md §3)
+#define EEP_KEY_MAP_SIZE 140
+
+/* F07 — Rubber-ducky vault.  Two slots, 16 (mod, key) pairs each.
+ * Layout matches DESIGN.md §3 v3 EEPROM table. */
+#define VAULT_SLOTS              2
+#define VAULT_MAX_PAIRS          16
+#define VAULT_PAYLOAD_BYTES      (VAULT_MAX_PAIRS * 2)   /* 32 */
+#define EEP_VAULT_SLOT0_LEN      167 //1 BYTE
+#define EEP_VAULT_SLOT0_PAYLOAD  168 //32 BYTES
+#define EEP_VAULT_SLOT1_LEN      200 //1 BYTE
+#define EEP_VAULT_SLOT1_PAYLOAD  201 //32 BYTES
+
+/* F09 — TOTP.  Reserved by the v3 bump (single-bump strategy); F09
+ * implements the read/write logic in a later commit. */
+#define EEP_TOTP_SLOT0_KEY       233 //20 BYTES (raw post-base32 key)
+#define EEP_TOTP_SLOT0_LABEL     253 //4  BYTES (short display label)
+#define EEP_RESERVED_257         257 //3 BYTES total (257..259) — future flags
 
 
 static const uint8_t default_keymap[21] = { 

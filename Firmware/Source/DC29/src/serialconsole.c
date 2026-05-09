@@ -39,18 +39,27 @@ extern bool main_b_cdc_enable;
 /* Escape parser states.  3..5 are dedicated to the variable-length 'h'
  * (F06 HID burst) path which can carry up to MAX_BURST_PAIRS*2 bytes —
  * far more than escape_args[12] can hold, so 'h' bypasses escape_args
- * entirely and streams into hid_burst's own buffer via _burst_recv_buf. */
+ * entirely and streams into hid_burst's own buffer via _burst_recv_buf.
+ * 6 is the F07 vault-write payload state, also using _burst_recv_buf. */
 static uint8_t  escape_state = 0;  /* 0=idle 1=awaiting_cmd 2=collecting_args */
                                    /* 3=h_len_lo 4=h_len_hi 5=h_data        */
+                                   /* 6=v_w_payload                         */
 static uint8_t  escape_cmd = 0;
 static uint8_t  escape_args[12];   /* max 12 args (P command: r1 g1 b1 r2 g2 b2 r3 g3 b3 r4 g4 b4) */
 static uint8_t  escape_args_count = 0;
 static uint8_t  escape_args_needed = 0;
 
-/* F06 burst-receive scratch — sized to the firmware's MAX_BURST_PAIRS. */
+/* F06 burst-receive scratch — sized to the firmware's MAX_BURST_PAIRS.
+ * Reused by F07 vault-write since vault payloads (≤ 32 bytes) easily
+ * fit and the two paths are mutually exclusive in the parser. */
 static uint8_t  _burst_recv_buf[MAX_BURST_PAIRS * 2];
 static uint16_t _burst_recv_n_pairs = 0;
 static uint16_t _burst_recv_count = 0;
+
+/* F07 vault-write working state. */
+static uint8_t  _vault_w_slot = 0;
+static uint8_t  _vault_w_n_pairs = 0;
+static uint8_t  _vault_w_count = 0;
 
 extern uint8_t keymaplength;
 extern uint8_t keymap[];
@@ -168,6 +177,15 @@ void updateSerialConsole(void){
 					escape_state        = 3;
 					return;
 				}
+				/* F07 — Vault.  Variable arg count by sub-cmd:
+				 *   'F' <slot>                        → 2 args total
+				 *   'C' <slot>                        → 2 args total
+				 *   'L'                               → 1 arg total
+				 *   'W' <slot> <n_pairs> <pairs*2>    → 3 + n_pairs*2 args
+				 * 'W' fits in escape_args[12] only at very small lengths;
+				 * for full payloads we route through _burst_recv_buf.
+				 * First arg is the sub-cmd; expand args_needed once we see it. */
+				if(data == 'v'){ escape_args_needed = 1; escape_state = 2; return; }
 				return;
 			}
 			if(escape_state == 2){
@@ -185,6 +203,14 @@ void updateSerialConsole(void){
 					uint8_t sub = escape_args[0];
 					if(sub == 'M' || sub == 'X') escape_args_needed = 1; /* done */
 					else if(sub == 'I') escape_args_needed = 5;          /* sub + 4 LE bytes */
+					else { escape_state = 0; return; }
+				}
+				/* Variable-length expansion for F07 vault 'v' sub-cmds. */
+				if(escape_cmd == 'v' && escape_args_count == 1){
+					uint8_t sub = escape_args[0];
+					if(sub == 'L')                 escape_args_needed = 1;  /* done */
+					else if(sub == 'F' || sub == 'C') escape_args_needed = 2;  /* sub + slot */
+					else if(sub == 'W')            escape_args_needed = 3;  /* sub + slot + n_pairs (then payload via state 6) */
 					else { escape_state = 0; return; }
 				}
 				if(escape_args_count < escape_args_needed) return;
@@ -257,6 +283,50 @@ void updateSerialConsole(void){
 				} else if(escape_cmd == 'p'){
 					/* F04 — play beep pattern by id (0 = silence/cancel). */
 					beep_play_pattern(escape_args[0]);
+				} else if(escape_cmd == 'v'){
+					/* F07 — Rubber-ducky vault. */
+					uint8_t sub  = escape_args[0];
+					uint8_t slot = (escape_args_count >= 2) ? escape_args[1] : 0;
+					if(sub == 'F'){
+						vault_fire(slot);
+					} else if(sub == 'C'){
+						vault_clear(slot);
+					} else if(sub == 'L'){
+						/* List: emit one reply per slot.
+						 * Reply format: 0x01 'b' 'V' <slot> <len> <8 preview bytes>
+						 * Total 12 bytes per slot.  Preview is zero-padded if
+						 * the slot has < 8 payload bytes. */
+						if(main_b_cdc_enable){
+							for(uint8_t s = 0; s < VAULT_SLOTS; s++){
+								uint8_t preview[8] = {0,0,0,0,0,0,0,0};
+								uint8_t len = vault_read_preview(s, preview, sizeof(preview));
+								/* 13 bytes: 0x01 + 'b' + 'V' + slot + len + 8 preview. */
+								uint8_t reply[13] = {
+									0x01, 'b', 'V', s, len,
+									preview[0], preview[1], preview[2], preview[3],
+									preview[4], preview[5], preview[6], preview[7],
+								};
+								udi_cdc_write_buf(reply, sizeof(reply));
+							}
+						}
+					} else if(sub == 'W'){
+						/* sub + slot + n_pairs received; transition to state 6
+						 * to collect the payload bytes into _burst_recv_buf. */
+						_vault_w_slot    = escape_args[1];
+						_vault_w_n_pairs = escape_args[2];
+						_vault_w_count   = 0;
+						if(_vault_w_n_pairs == 0 || _vault_w_n_pairs > VAULT_MAX_PAIRS){
+							/* Empty write = clear; over-long = reject.  Either
+							 * way, no payload bytes follow — handle here. */
+							if(_vault_w_n_pairs == 0){
+								vault_clear(_vault_w_slot);
+							}
+							/* over-long: drop silently (host-side helper guards too) */
+							return;
+						}
+						escape_state = 6;
+						return;
+					}
 				} else if(escape_cmd == 'j'){
 					/* F08a-lite — Stay Awake jiggler. */
 					uint8_t sub = escape_args[0];
@@ -300,6 +370,15 @@ void updateSerialConsole(void){
 				_burst_recv_buf[_burst_recv_count++] = (uint8_t)data;
 				if(_burst_recv_count >= (uint16_t)(_burst_recv_n_pairs * 2)){
 					hid_burst(_burst_recv_buf, _burst_recv_n_pairs);
+					escape_state = 0;
+				}
+				return;
+			}
+			/* F07 vault-write payload — collect n_pairs*2 bytes then commit. */
+			if(escape_state == 6){
+				_burst_recv_buf[_vault_w_count++] = (uint8_t)data;
+				if(_vault_w_count >= (uint16_t)(_vault_w_n_pairs * 2)){
+					vault_write(_vault_w_slot, _burst_recv_buf, _vault_w_n_pairs);
 					escape_state = 0;
 				}
 				return;
