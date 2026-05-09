@@ -1,6 +1,6 @@
 # F03 — Haptic-style action confirmation (buzzer)
 
-> Status: **planned** · Risk: **low** · Owner: firmware
+> Status: **hardware-verified** · Risk: **low** · Owner: firmware
 
 ## Goal
 
@@ -155,9 +155,9 @@ _To be filled in after manual verification._
 
 ### Implementation phase
 
-- [ ] Code complete
-- [ ] Build passes (≤ 56 KB)
-- [ ] Manual hardware test passed (all items in Test plan above)
+- [x] Code complete
+- [x] Build passes (≤ 56 KB) — 48792 B
+- [x] Manual hardware test passed (all items in Test plan above) — verified 2026-05-09 via `tools/test_haptic_click.py`: phase 1 audible click confirmed; phase 2 silent; phase 3 takeover click without F03 double-fire. Tuned to 1500 Hz / 15 ms (4 kHz initial value was inaudible — buzzer cv formula `15625/freq` yields cv≈3 above 2 kHz which doesn't drive the piezo)
 - [ ] Implementation notes filled in
 - [ ] Testing notes filled in
 

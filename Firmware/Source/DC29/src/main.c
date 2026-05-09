@@ -149,6 +149,15 @@ bool slider_enabled = true;
  * outward, settles back to the underlying scene.  Works on battery without
  * USB.  Set via 0x01 'I' 0/1 from the host.  RAM-only, default on. */
 bool splash_on_press_enabled = true;
+
+/* F03 — haptic-style click on every macro send.  Fires a short, high-pitch
+ * buzzer click at the end of send_keys() so the user gets non-visual
+ * confirmation that the keystroke fired (useful when focus is off-screen
+ * or LEDs are bridge-managed).  Suppressed when button_flash_enabled is
+ * true, since the takeover animation already fires its own click in
+ * pwm.c — avoids a double-click.  Set via 0x01 'k' 0/1 from the host.
+ * RAM-only, default on. */
+bool haptic_click_enabled = true;
 uint8_t effect_mode = 0;
 typedef enum { CHORD_IDLE, CHORD_PENDING, CHORD_LONG_FIRED } ChordState;
 static ChordState chord_state = CHORD_IDLE;

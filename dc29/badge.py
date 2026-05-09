@@ -43,6 +43,7 @@ from dc29.protocol import (
     CMD_PAINT_ALL,
     CMD_SET_SLIDER,
     CMD_SET_SPLASH,
+    CMD_HAPTIC_CLICK,
     CMD_MOD_TABLE,
     CMD_SET_KEY,
     CMD_QUERY_KEY,
@@ -482,6 +483,28 @@ class BadgeAPI:
             enabled: ``True`` to enable (firmware default), ``False`` to suppress.
         """
         cmd = bytes([ESCAPE, CMD_SET_SPLASH, 1 if enabled else 0])
+        self._write(cmd)
+
+    def set_haptic_click(self, enabled: bool) -> None:
+        """Enable or disable the F03 haptic buzzer click on macro send.
+
+        When enabled, every ``send_keys()`` invocation that emits at least one
+        HID report ends with a brief, high-pitch buzzer click — non-visual
+        confirmation that the keystroke fired.  The click is suppressed
+        automatically while ``button_flash`` is enabled, since the takeover
+        animation already produces its own click during phase 1.
+
+        The intended use case is bridges that have called
+        :meth:`set_button_flash(False)` to take over LEDs — they lose the
+        built-in click and can call this to restore haptic feedback.
+
+        Firmware default is enabled.  RAM-only — re-applied on every dc29
+        startup if the user has it set.
+
+        Args:
+            enabled: ``True`` to enable (firmware default), ``False`` to suppress.
+        """
+        cmd = bytes([ESCAPE, CMD_HAPTIC_CLICK, 1 if enabled else 0])
         self._write(cmd)
 
     def set_key(self, button: int, modifier: int, keycode: int) -> None:

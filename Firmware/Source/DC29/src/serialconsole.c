@@ -45,6 +45,7 @@ extern uint8_t keymaplength;
 extern uint8_t keymap[];
 extern uint8_t keymapstarts[];
 extern bool button_flash_enabled;
+extern bool haptic_click_enabled;
 extern bool slider_enabled;
 extern bool splash_on_press_enabled;
 extern uint8_t effect_mode;
@@ -137,6 +138,8 @@ void updateSerialConsole(void){
 				 *   'X'                                     → 1 arg after 'm'
 				 * First arg is the sub-cmd; we expand args_needed once we see it. */
 				if(data == 'm'){ escape_args_needed = 1; escape_state = 2; return; }
+				/* F03 — haptic click toggle.  RAM-only, default on. */
+				if(data == 'k'){ escape_args_needed = 1; escape_state = 2; return; }
 				return;
 			}
 			if(escape_state == 2){
@@ -198,6 +201,9 @@ void updateSerialConsole(void){
 					wled_seg.speed     = escape_args[0];
 					wled_seg.intensity = escape_args[1];
 					wled_seg.palette   = (uint8_t)(escape_args[2] % WLED_PAL_COUNT);
+				} else if(escape_cmd == 'k'){
+					/* F03 — haptic-click toggle (RAM-only). */
+					haptic_click_enabled = (escape_args[0] != 0);
 				} else if(escape_cmd == 'm'){
 					/* F01/F02 modifier-action table.
 					 * sub-cmd encoding from docs/hardware-features/DESIGN.md §1. */

@@ -185,6 +185,24 @@ Arguments (1 byte):
   * ``v`` — ``0`` to disable, ``1`` to enable (firmware default is enabled)
 """
 
+CMD_HAPTIC_CLICK: int = ord("k")
+"""
+``0x01 'k' v`` — Enable (``v=1``) or disable (``v=0``) the F03 haptic
+buzzer click that fires at the end of every ``send_keys()``.
+
+Arguments (1 byte):
+  * ``v`` — ``0`` to disable, ``1`` to enable (firmware default is enabled)
+
+The click only fires when ``button_flash`` is **disabled**.  When the
+takeover animation is on, it already produces its own personality-specific
+click during phase 1 of the press, so F03 stays out of the way to avoid a
+double-click.  The intended use case is bridge-managed LED setups, where
+``set_button_flash(False)`` has been called and the visual feedback is
+gone — the haptic click fills that gap.
+
+RAM-only; default returns to enabled on every reboot.
+"""
+
 CMD_MOD_TABLE: int = ord("m")
 """
 ``0x01 'm' <sub> ...`` — F01/F02 modifier-action table.

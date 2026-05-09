@@ -16,6 +16,7 @@ extern bool main_b_cdc_enable;
 
 extern bool wait_for_sof;
 extern bool button_flash_enabled;
+extern bool haptic_click_enabled;
 
 extern volatile uint32_t millis;
 
@@ -160,5 +161,15 @@ void send_keys(uint8_t key){
 				}
 			}
 		}
+	}
+
+	/* F03 — haptic click.  Only fires when the takeover animation isn't
+	 * going to (button_flash off → bridge owns LEDs → no built-in click).
+	 * Frequency/duration tuned to match the JOY personality click — proven
+	 * audible on this piezo.  The buzzer cv formula is 15625/freq, so
+	 * frequencies above ~2 kHz produce cv values too small to drive the
+	 * piezo reliably. */
+	if(haptic_click_enabled && !button_flash_enabled && key >= 1 && key <= 6){
+		buzzer_play(1500, 15);
 	}
 }
