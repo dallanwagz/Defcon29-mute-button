@@ -94,13 +94,13 @@ Default off; `dc29 start --enable beat-buzzer`. TUI bridge tab shows the checkbo
 
 Add `BeepPattern.KICK = 8` at 180 Hz / 12 ms (proposed) — punchy, mid-range thud?
 
-- [ ] ✅ Approve as proposed (180 Hz / 12 ms)
+- [x] ✅ Approve as proposed (180 Hz / 12 ms)
 - [ ] ❌ Reject — use 140 Hz / 12 ms (more thump) or 240 Hz / 12 ms (more click)
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ## Implementation notes
 
@@ -114,10 +114,10 @@ _To be filled in after manual verification._
 
 ### Design phase
 
-- [ ] All open questions above resolved
-- [ ] Implementation may begin
+- [x] All open questions above resolved
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ### Implementation phase
 

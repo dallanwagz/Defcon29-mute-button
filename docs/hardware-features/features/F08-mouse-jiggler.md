@@ -244,13 +244,13 @@ Used by TUI to preselect the last-used quick-start + LED mode. History is tracke
 
 `dc29 awake start <duration>` auto-spawns a bridge process if none is running (Amphetamine-feel)?
 
-- [ ] ✅ Approve as proposed (auto-spawn)
+- [x] ✅ Approve as proposed (auto-spawn)
 - [ ] ❌ Reject — error with "Run `dc29 start` first"
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -259,13 +259,13 @@ Used by TUI to preselect the last-used quick-start + LED mode. History is tracke
 
 "Indefinite" sessions have no end-time (proposed). Soft-cap at e.g. 24h to prevent forgotten sessions?
 
-- [ ] ✅ Approve as proposed (no cap)
+- [x] ✅ Approve as proposed (no cap)
 - [ ] ❌ Reject — soft-cap at 24h
 - [ ] 🔄 Modify — different cap (specify in comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -274,13 +274,13 @@ Used by TUI to preselect the last-used quick-start + LED mode. History is tracke
 
 Skip auto-pause logic in v1 (proposed) — user manually stops if needed?
 
-- [ ] ✅ Approve as proposed (skip auto-pause)
+- [x] ✅ Approve as proposed (skip auto-pause)
 - [ ] ❌ Reject — implement IOKit lid-close detection
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -289,13 +289,13 @@ Skip auto-pause logic in v1 (proposed) — user manually stops if needed?
 
 Show all 7 effect modes in the LED-mode dropdown (proposed) vs. curate to calm ones (breathe, gradient)?
 
-- [ ] ✅ Approve as proposed (all 7 modes)
+- [x] ✅ Approve as proposed (all 7 modes)
 - [ ] ❌ Reject — curate to calm modes only
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -304,13 +304,13 @@ Show all 7 effect modes in the LED-mode dropdown (proposed) vs. curate to calm o
 
 30 s jiggle pulse, 60 s end-time refresh (2× headroom over 1-min macOS sleep floor)?
 
-- [ ] ✅ Approve as proposed (30 s / 60 s)
+- [x] ✅ Approve as proposed (30 s / 60 s)
 - [ ] ❌ Reject — different intervals (specify in comments)
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -319,13 +319,13 @@ Show all 7 effect modes in the LED-mode dropdown (proposed) vs. curate to calm o
 
 TUI custom field accepts 1m to 24h (proposed)?
 
-- [ ] ✅ Approve as proposed (1m–24h)
+- [x] ✅ Approve as proposed (1m–24h)
 - [ ] ❌ Reject — different range (specify in comments)
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -334,13 +334,13 @@ TUI custom field accepts 1m to 24h (proposed)?
 
 Place "Stay Awake" tab at slot 9 (after LEDs)?
 
-- [ ] ✅ Approve as proposed (slot 9, after LEDs)
+- [x] ✅ Approve as proposed (slot 9, after LEDs)
 - [ ] ❌ Reject — place at a more prominent slot (e.g., slot 4 alongside Effects)
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ## Implementation notes
 
@@ -357,9 +357,9 @@ _To be filled in after manual verification._
 #### Design phase
 
 - [ ] Open questions above resolved
-- [ ] Implementation may begin
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 #### Implementation phase
 
@@ -377,9 +377,9 @@ _To be filled in after manual verification._
 
 - [ ] TUI mockup approved (see ASCII layout above)
 - [ ] CLI surface approved
-- [ ] Implementation may begin
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 #### Implementation phase
 

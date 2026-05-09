@@ -90,13 +90,13 @@ Per [DESIGN.md §2](../DESIGN.md#2-buzzer-arbitration), F03 haptic clicks are su
 
 Zero-length `n_le16 == 0` cancels an in-progress burst (proposed)?
 
-- [ ] ✅ Approve as proposed (zero-length cancel)
+- [x] ✅ Approve as proposed (zero-length cancel)
 - [ ] ❌ Reject — use a dedicated cancel sub-command
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -105,13 +105,13 @@ Zero-length `n_le16 == 0` cancels an in-progress burst (proposed)?
 
 Fire bursts regardless of meeting state (proposed) — bursts are user-initiated; Teams LED is independent?
 
-- [ ] ✅ Approve as proposed (fire regardless)
+- [x] ✅ Approve as proposed (fire regardless)
 - [ ] ❌ Reject — yield (skip burst) during meetings
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ## Implementation notes
 
@@ -125,10 +125,10 @@ _To be filled in after manual verification._
 
 ### Design phase
 
-- [ ] All open questions above resolved
-- [ ] Implementation may begin
+- [x] All open questions above resolved
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ### Implementation phase
 

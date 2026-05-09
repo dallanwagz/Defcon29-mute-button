@@ -22,68 +22,68 @@ Single-page master checklist for the entire 11-feature batch. Every checkbox lin
 
 ### F01 — Tap-count + long-press ([file](features/F01-tap-count-long-press.md))
 
-- [ ] [Q1 — Long-press semantics](features/F01-tap-count-long-press.md#f01-q1-long-press-semantics)
-- [ ] [Q2 — Multi-tap window default](features/F01-tap-count-long-press.md#f01-q2-tap-count-window)
-- [ ] [Q3 — Event report-back format](features/F01-tap-count-long-press.md#f01-q3-event-report-format)
-- [ ] [Q4 — RAM-only modifier table for first cut](features/F01-tap-count-long-press.md#f01-q4-ram-only-first-cut)
+- [x] [Q1 — Long-press semantics](features/F01-tap-count-long-press.md#f01-q1-long-press-semantics)
+- [x] [Q2 — Multi-tap window default](features/F01-tap-count-long-press.md#f01-q2-tap-count-window)
+- [x] [Q3 — Event report-back format](features/F01-tap-count-long-press.md#f01-q3-event-report-format)
+- [x] [Q4 — RAM-only modifier table for first cut](features/F01-tap-count-long-press.md#f01-q4-ram-only-first-cut)
 
 ### F02 — Chord shortcuts ([file](features/F02-chords.md))
 
-- [ ] [Q1 — Three-finger fumble policy](features/F02-chords.md#f02-q1-three-finger-fumble)
-- [ ] [Q2 — Chord vs. long-press collision](features/F02-chords.md#f02-q2-chord-vs-long-press)
+- [x] [Q1 — Three-finger fumble policy](features/F02-chords.md#f02-q1-three-finger-fumble)
+- [x] [Q2 — Chord vs. long-press collision](features/F02-chords.md#f02-q2-chord-vs-long-press)
 
 ### F03 — Haptic confirmation ([file](features/F03-haptic-confirmation.md))
 
-- [ ] [Q1 — Click frequency](features/F03-haptic-confirmation.md#f03-q1-click-frequency)
-- [ ] [Q2 — Click duration](features/F03-haptic-confirmation.md#f03-q2-click-duration)
-- [ ] [Q3 — EEPROM persistence deferred?](features/F03-haptic-confirmation.md#f03-q3-eeprom-persistence)
+- [x] [Q1 — Click frequency](features/F03-haptic-confirmation.md#f03-q1-click-frequency)
+- [x] [Q2 — Click duration](features/F03-haptic-confirmation.md#f03-q2-click-duration)
+- [x] [Q3 — EEPROM persistence deferred?](features/F03-haptic-confirmation.md#f03-q3-eeprom-persistence)
 
 ### F04 — Beep signatures ([file](features/F04-beep-signatures.md))
 
-- [ ] [Q1 — Pattern resume after takeover click](features/F04-beep-signatures.md#f04-q1-pattern-resume-behavior)
+- [x] [Q1 — Pattern resume after takeover click](features/F04-beep-signatures.md#f04-q1-pattern-resume-behavior)
 
 ### F05 — Beat-doubler ([file](features/F05-beat-doubler.md))
 
-- [ ] [Q1 — KICK pattern frequency](features/F05-beat-doubler.md#f05-q1-kick-pattern-frequency)
+- [x] [Q1 — KICK pattern frequency](features/F05-beat-doubler.md#f05-q1-kick-pattern-frequency)
 
 ### F06 — HID burst ([file](features/F06-hid-burst.md))
 
-- [ ] [Q1 — Cancel semantics](features/F06-hid-burst.md#f06-q1-cancel-semantics)
-- [ ] [Q2 — Bursts during Teams meetings](features/F06-hid-burst.md#f06-q2-bursts-during-meetings)
+- [x] [Q1 — Cancel semantics](features/F06-hid-burst.md#f06-q1-cancel-semantics)
+- [x] [Q2 — Bursts during Teams meetings](features/F06-hid-burst.md#f06-q2-bursts-during-meetings)
 
 ### F07 — Rubber-ducky vault ([file](features/F07-rubber-ducky-vault.md))
 
 - [x] ~~Q1 — Reduced sizing~~ → resolved via DESIGN Q1
-- [ ] [Q2 — Wipe vs. migrate EEPROM](features/F07-rubber-ducky-vault.md#f07-q2-wipe-vs-migrate)
+- [x] [Q2 — Wipe vs. migrate EEPROM](features/F07-rubber-ducky-vault.md#f07-q2-wipe-vs-migrate)
 
 ### F08 — Stay Awake ([file](features/F08-mouse-jiggler.md))
 
-- [ ] [Q1 — CLI auto-spawn](features/F08-mouse-jiggler.md#f08-q1-cli-auto-spawn)
-- [ ] [Q2 — Indefinite session soft cap](features/F08-mouse-jiggler.md#f08-q2-indefinite-soft-cap)
-- [ ] [Q3 — Auto-pause on lid close](features/F08-mouse-jiggler.md#f08-q3-auto-pause-on-lid-close)
-- [ ] [Q4 — Effect-mode submenu scope](features/F08-mouse-jiggler.md#f08-q4-effect-mode-submenu)
-- [ ] [Q5 — Heartbeat interval](features/F08-mouse-jiggler.md#f08-q5-heartbeat-interval)
-- [ ] [Q6 — Custom duration max](features/F08-mouse-jiggler.md#f08-q6-custom-duration-max)
-- [ ] [Q7 — TUI tab slot](features/F08-mouse-jiggler.md#f08-q7-tab-slot)
+- [x] [Q1 — CLI auto-spawn](features/F08-mouse-jiggler.md#f08-q1-cli-auto-spawn)
+- [x] [Q2 — Indefinite session soft cap](features/F08-mouse-jiggler.md#f08-q2-indefinite-soft-cap)
+- [x] [Q3 — Auto-pause on lid close](features/F08-mouse-jiggler.md#f08-q3-auto-pause-on-lid-close)
+- [x] [Q4 — Effect-mode submenu scope](features/F08-mouse-jiggler.md#f08-q4-effect-mode-submenu)
+- [x] [Q5 — Heartbeat interval](features/F08-mouse-jiggler.md#f08-q5-heartbeat-interval)
+- [x] [Q6 — Custom duration max](features/F08-mouse-jiggler.md#f08-q6-custom-duration-max)
+- [x] [Q7 — TUI tab slot](features/F08-mouse-jiggler.md#f08-q7-tab-slot)
 
 ### F09 — TOTP token ([file](features/F09-totp-token.md))
 
 - [x] ~~Q1 — One slot only~~ → resolved via DESIGN Q1
-- [ ] [Q2 — TOTP digit count](features/F09-totp-token.md#f09-q2-digit-count)
+- [x] [Q2 — TOTP digit count](features/F09-totp-token.md#f09-q2-digit-count)
 
 ### F10 — HID class switch ([file](features/F10-hid-class-switch.md))
 
 - [x] ~~Q1 — Implementation path~~ → resolved via DESIGN Q3
 - [x] ~~Q2 — MIDI mode scope~~ → resolved via DESIGN Q2 (**dropped**)
-- [ ] [Q3 — Mode 3 chord button assignment](features/F10-hid-class-switch.md#f10-q3-mode-4-chord)
-- [ ] [Q4 — Persistent mode override (defer?)](features/F10-hid-class-switch.md#f10-q4-persistent-mode-override)
+- [x] [Q3 — Mode 3 chord button assignment](features/F10-hid-class-switch.md#f10-q3-mode-4-chord)
+- [x] [Q4 — Persistent mode override (defer?)](features/F10-hid-class-switch.md#f10-q4-persistent-mode-override)
 
 ### F11 — WebUSB config UI ([file](features/F11-webusb-config-ui.md))
 
-- [ ] [Q1 — GitHub Pages URL](features/F11-webusb-config-ui.md#f11-q1-github-pages-url)
-- [ ] [Q2 — Deployment mechanism](features/F11-webusb-config-ui.md#f11-q2-deploy-mechanism)
-- [ ] [Q3 — Web-app feature scope](features/F11-webusb-config-ui.md#f11-q3-web-app-scope)
-- [ ] [Q4 — Origin allowlist](features/F11-webusb-config-ui.md#f11-q4-origin-allowlist)
+- [x] [Q1 — GitHub Pages URL](features/F11-webusb-config-ui.md#f11-q1-github-pages-url)
+- [x] [Q2 — Deployment mechanism](features/F11-webusb-config-ui.md#f11-q2-deploy-mechanism)
+- [x] [Q3 — Web-app feature scope](features/F11-webusb-config-ui.md#f11-q3-web-app-scope)
+- [x] [Q4 — Origin allowlist](features/F11-webusb-config-ui.md#f11-q4-origin-allowlist)
 
 ---
 
@@ -93,17 +93,17 @@ Status snapshot. Tick the cell once the corresponding phase is complete in each 
 
 | Feature | Design approved | Built ≤ 56 KB | Hardware tested | Final sign-off |
 |---------|:---------------:|:-------------:|:---------------:|:--------------:|
-| F01 — Tap-count + long-press      | [ ] | [ ] | [ ] | [ ] |
-| F02 — Chords                       | [ ] | [ ] | [ ] | [ ] |
-| F03 — Haptic confirmation          | [ ] | [ ] | [ ] | [ ] |
-| F04 — Beep signatures              | [ ] | [ ] | [ ] | [ ] |
-| F05 — Beat-doubler                 | [ ] |  n/a (Python) | [ ] | [ ] |
-| F06 — HID burst                    | [ ] | [ ] | [ ] | [ ] |
-| F07 — Rubber-ducky vault           | [ ] | [ ] | [ ] | [ ] |
-| F08a — Mouse HID firmware          | [ ] | [ ] | [ ] | [ ] |
-| F08b — Stay Awake bridge + TUI     | [ ] |  n/a (Python) | [ ] | [ ] |
-| F09 — TOTP token                   | [ ] | [ ] | [ ] | [ ] |
-| F10 — HID class switch             | [ ] | [ ] | [ ] | [ ] |
+| F01 — Tap-count + long-press      | [x] | [ ] | [ ] | [ ] |
+| F02 — Chords                       | [x] | [ ] | [ ] | [ ] |
+| F03 — Haptic confirmation          | [x] | [ ] | [ ] | [ ] |
+| F04 — Beep signatures              | [x] | [ ] | [ ] | [ ] |
+| F05 — Beat-doubler                 | [x] |  n/a (Python) | [ ] | [ ] |
+| F06 — HID burst                    | [x] | [ ] | [ ] | [ ] |
+| F07 — Rubber-ducky vault           | [x] | [ ] | [ ] | [ ] |
+| F08a — Mouse HID firmware          | [x] | [ ] | [ ] | [ ] |
+| F08b — Stay Awake bridge + TUI     | [x] |  n/a (Python) | [ ] | [ ] |
+| F09 — TOTP token                   | [x] | [ ] | [ ] | [ ] |
+| F10 — HID class switch             | [x] | [ ] | [ ] | [ ] |
 | F11 — WebUSB config UI             | [ ] | [ ] | [ ] | [ ] |
 
 ## How sign-off cascades

@@ -141,13 +141,13 @@ The bootloader trigger (B4 alone, no firmware running) must remain unconditional
 
 CDC-only mode triggered by B1+B4 chord at boot (avoids B4-alone bootloader conflict)?
 
-- [ ] ✅ Approve as proposed (B1+B4 chord)
+- [x] ✅ Approve as proposed (B1+B4 chord)
 - [ ] ❌ Reject — pick different button(s) (specify in comments)
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -156,13 +156,13 @@ CDC-only mode triggered by B1+B4 chord at boot (avoids B4-alone bootloader confl
 
 Out of scope for v1 — every plug-in decides freshly. Add `dc29 mode set <X>` follow-up later?
 
-- [ ] ✅ Approve as proposed (defer to follow-up)
+- [x] ✅ Approve as proposed (defer to follow-up)
 - [ ] ❌ Reject — include persistent override in F10
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ## Implementation notes
 
@@ -176,10 +176,10 @@ _To be filled in after manual verification._
 
 ### Design phase
 
-- [ ] All open questions above resolved
-- [ ] Implementation may begin
+- [x] All open questions above resolved
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ### Implementation phase
 

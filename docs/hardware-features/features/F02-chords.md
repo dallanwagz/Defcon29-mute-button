@@ -79,13 +79,13 @@ All chord logic lives inside `input.c` (added in F01) and `serialconsole.c`'s `'
 
 3rd-button press while a 2-button chord is armed: ignore the third button (consume as no-op until released)?
 
-- [ ] ✅ Approve as proposed (ignore)
+- [x] ✅ Approve as proposed (ignore)
 - [ ] ❌ Reject — treat as 3-button chord (expands action table)
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -94,13 +94,13 @@ All chord logic lives inside `input.c` (added in F01) and `serialconsole.c`'s `'
 
 Hold B1 alone for 500 ms, then press B2: chord window has expired → long-press fires on B1 release, B2 fires solo. Acceptable?
 
-- [ ] ✅ Approve as proposed (sequential — long-press + solo)
+- [x] ✅ Approve as proposed (sequential — long-press + solo)
 - [ ] ❌ Reject — B2-during-B1-hold should reset to chord-attempt
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ## Implementation notes
 
@@ -114,10 +114,10 @@ _To be filled in after manual verification._
 
 ### Design phase
 
-- [ ] All open questions above resolved
-- [ ] Implementation may begin
+- [x] All open questions above resolved
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ### Implementation phase
 

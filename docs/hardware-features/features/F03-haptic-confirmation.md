@@ -98,13 +98,13 @@ Documented as a known gap in the success-criteria checkbox. If you want EEPROM p
 
 1200 Hz crisp click (proposed) vs. softer 600 Hz "thud"?
 
-- [ ] ✅ Approve as proposed (1200 Hz crisp)
+- [x] ✅ Approve as proposed (1200 Hz crisp)
 - [ ] ❌ Reject — use 600 Hz thud
 - [ ] 🔄 Modify — different value (specify in comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -113,13 +113,13 @@ Documented as a known gap in the success-criteria checkbox. If you want EEPROM p
 
 8 ms (more "tap" than "click") vs. 15 ms (more audible)?
 
-- [ ] ✅ Approve as proposed (8 ms)
+- [x] ✅ Approve as proposed (8 ms)
 - [ ] ❌ Reject — use 15 ms
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -128,13 +128,13 @@ Documented as a known gap in the success-criteria checkbox. If you want EEPROM p
 
 Ship F03 RAM-only first, EEPROM toggle persistence in a later cleanup PR?
 
-- [ ] ✅ Approve as proposed (defer)
+- [x] ✅ Approve as proposed (defer)
 - [ ] ❌ Reject — require EEPROM persistence in F03
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ## Implementation notes
 
@@ -148,10 +148,10 @@ _To be filled in after manual verification._
 
 ### Design phase
 
-- [ ] All open questions above resolved
-- [ ] Implementation may begin
+- [x] All open questions above resolved
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ### Implementation phase
 

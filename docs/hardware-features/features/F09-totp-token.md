@@ -153,13 +153,13 @@ Bridge ships with a host-side reference TOTP implementation that we diff the fir
 
 6 digits (proposed, matches consumer 2FA apps) vs. 8 digits (RFC 6238 default test vectors)?
 
-- [ ] ✅ Approve as proposed (6 digits)
+- [x] ✅ Approve as proposed (6 digits)
 - [ ] ❌ Reject — 8 digits
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ## Implementation notes
 
@@ -173,10 +173,10 @@ _To be filled in after manual verification._
 
 ### Design phase
 
-- [ ] All open questions above resolved
-- [ ] Implementation may begin
+- [x] All open questions above resolved
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ### Implementation phase
 

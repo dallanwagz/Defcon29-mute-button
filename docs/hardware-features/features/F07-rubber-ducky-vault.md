@@ -140,13 +140,13 @@ Document loudly in user-facing release notes.
 
 Wipe all EEPROM on FIRMWARE_VERSION bump (per locked README policy), vs. one-shot migration preserving keymap + LED colors?
 
-- [ ] ✅ Approve as proposed (wipe)
+- [x] ✅ Approve as proposed (wipe)
 - [ ] ❌ Reject — write the migration
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ## Implementation notes
 
@@ -160,10 +160,10 @@ _To be filled in after manual verification._
 
 ### Design phase
 
-- [ ] All open questions above resolved
-- [ ] Implementation may begin
+- [x] All open questions above resolved
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ### Implementation phase
 

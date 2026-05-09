@@ -121,13 +121,13 @@ class BeepPattern(IntEnum):
 
 Takeover click cancels the in-progress pattern (don't resume) — host re-issues if needed?
 
-- [ ] ✅ Approve as proposed (cancel, no resume)
+- [x] ✅ Approve as proposed (cancel, no resume)
 - [ ] ❌ Reject — resume pattern after the click
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ## Implementation notes
 
@@ -141,10 +141,10 @@ _To be filled in after manual verification._
 
 ### Design phase
 
-- [ ] All open questions above resolved
-- [ ] Implementation may begin
+- [x] All open questions above resolved
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ### Implementation phase
 

@@ -176,13 +176,13 @@ To meet the success criterion "no missed events under 100 rapid taps," add a hos
 
 Fire on release (proposed: yes — abortable by holding-then-releasing-fast) vs. fire at threshold cross (snappier but not abortable)?
 
-- [ ] ✅ Approve as proposed (fire on release)
+- [x] ✅ Approve as proposed (fire on release)
 - [ ] ❌ Reject — fire at threshold cross
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -191,13 +191,13 @@ Fire on release (proposed: yes — abortable by holding-then-releasing-fast) vs.
 
 250 ms between releases counts as same multi-tap chain. Power-typists may trip false double-taps. Acceptable?
 
-- [ ] ✅ Approve as proposed (250 ms)
+- [x] ✅ Approve as proposed (250 ms)
 - [ ] ❌ Reject — pick a different value (specify in comments)
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -206,13 +206,13 @@ Fire on release (proposed: yes — abortable by holding-then-releasing-fast) vs.
 
 Use lowercase `'b'` namespace for new event kinds (`'b' '2'` double, `'b' '3'` triple, `'b' 'L'` long, `'b' 'C'` chord) and preserve legacy `'B'` for solo single-tap?
 
-- [ ] ✅ Approve as proposed (lowercase `'b'`)
+- [x] ✅ Approve as proposed (lowercase `'b'`)
 - [ ] ❌ Reject — extend existing `'B'` with a kind byte (breaks compat)
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -221,13 +221,13 @@ Use lowercase `'b'` namespace for new event kinds (`'b' '2'` double, `'b' '3'` t
 
 Modifier mappings live in RAM, populated by bridges on connect, lost on power-cycle. EEPROM persistence is a follow-up that bumps `FIRMWARE_VERSION` later.
 
-- [ ] ✅ Approve as proposed (RAM-only first)
+- [x] ✅ Approve as proposed (RAM-only first)
 - [ ] ❌ Reject — require EEPROM persistence in F01 (will bump FIRMWARE_VERSION earlier than F07)
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ## Implementation notes
 
@@ -241,10 +241,10 @@ _To be filled in after manual verification._
 
 ### Design phase
 
-- [ ] All open questions above resolved
-- [ ] Implementation may begin
+- [x] All open questions above resolved
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ### Implementation phase
 

@@ -123,13 +123,13 @@ WebUSB pairing **does not block** CDC or HID. The web app and the Python bridge 
 
 Hardcode `https://dwagz1.github.io/dc29-config/` (or specify alternative)?
 
-- [ ] ✅ Approve as proposed (`https://dwagz1.github.io/dc29-config/`)
+- [x] ✅ Approve as proposed (`https://dwagz1.github.io/dc29-config/`)
 - [ ] ❌ Reject — different URL (specify in comments)
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -138,13 +138,13 @@ Hardcode `https://dwagz1.github.io/dc29-config/` (or specify alternative)?
 
 Auto-deploy via GitHub Actions on `main` push (proposed) vs. manual `gh-pages` branch push?
 
-- [ ] ✅ Approve as proposed (GitHub Actions)
+- [x] ✅ Approve as proposed (GitHub Actions)
 - [ ] ❌ Reject — manual deploy
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -153,13 +153,13 @@ Auto-deploy via GitHub Actions on `main` push (proposed) vs. manual `gh-pages` b
 
 Stick to: keymap edit + vault + TOTP + haptic/jiggler toggles + LED test (proposed). Add F04 patterns + F06 burst UI to the web app, or defer?
 
-- [ ] ✅ Approve as proposed (skip F04/F06 in web UI)
+- [x] ✅ Approve as proposed (skip F04/F06 in web UI)
 - [ ] ❌ Reject — include F04 patterns + F06 burst
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ---
 
@@ -168,13 +168,13 @@ Stick to: keymap edit + vault + TOTP + haptic/jiggler toggles + LED test (propos
 
 GitHub Pages origin only (proposed) vs. also allow `localhost` for development?
 
-- [ ] ✅ Approve as proposed (GitHub Pages only)
+- [x] ✅ Approve as proposed (GitHub Pages only)
 - [ ] ❌ Reject — also allow `localhost`
 - [ ] 🔄 Modify (see comments)
 
 **Comments:**
 
-**Reviewed by:** _ _   **Date:** _ _
+**Reviewed by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ## Implementation notes
 
@@ -188,10 +188,10 @@ _To be filled in after manual verification._
 
 ### Design phase
 
-- [ ] All open questions above resolved
-- [ ] Implementation may begin
+- [x] All open questions above resolved
+- [x] Implementation may begin
 
-**Design approved by:** _ _   **Date:** _ _
+**Design approved by:** dallan (default-accepted)   **Date:** 2026-05-09
 
 ### Implementation phase
 
