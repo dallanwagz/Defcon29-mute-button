@@ -171,6 +171,7 @@ SRCS := \
     $(SRCROOT)/ASF/sam0/utils/syscalls/gcc/syscalls.c \
     $(SRCROOT)/comms.c \
     $(SRCROOT)/input.c \
+    $(SRCROOT)/jiggler.c \
     $(SRCROOT)/keys.c \
     $(SRCROOT)/main.c \
     $(SRCROOT)/pwm.c \

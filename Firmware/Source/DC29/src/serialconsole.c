@@ -10,6 +10,7 @@
 #include "keys.h"
 #include "wled_fx.h"
 #include "input.h"
+#include "jiggler.h"
 
 extern bool main_b_cdc_enable;
 
@@ -140,6 +141,12 @@ void updateSerialConsole(void){
 				if(data == 'm'){ escape_args_needed = 1; escape_state = 2; return; }
 				/* F03 — haptic click toggle.  RAM-only, default on. */
 				if(data == 'k'){ escape_args_needed = 1; escape_state = 2; return; }
+				/* F08a-lite — Stay Awake jiggler.  Variable arg count by sub-cmd:
+				 *   'M'                          → 1 arg total (just 'M')
+				 *   'I' <duration_le32:4>        → 5 args total
+				 *   'X'                          → 1 arg total
+				 * First arg is the sub-cmd; we expand args_needed once we see it. */
+				if(data == 'j'){ escape_args_needed = 1; escape_state = 2; return; }
 				return;
 			}
 			if(escape_state == 2){
@@ -151,6 +158,13 @@ void updateSerialConsole(void){
 					else if(sub == 'C') escape_args_needed = 5;
 					else if(sub == 'X') escape_args_needed = 1; /* already done */
 					else { escape_state = 0; return; } /* unknown sub-cmd */
+				}
+				/* Variable-length expansion for 'j' once sub-cmd byte arrives. */
+				if(escape_cmd == 'j' && escape_args_count == 1){
+					uint8_t sub = escape_args[0];
+					if(sub == 'M' || sub == 'X') escape_args_needed = 1; /* done */
+					else if(sub == 'I') escape_args_needed = 5;          /* sub + 4 LE bytes */
+					else { escape_state = 0; return; }
 				}
 				if(escape_args_count < escape_args_needed) return;
 				escape_state = 0;
@@ -218,6 +232,20 @@ void updateSerialConsole(void){
 						input_set_action_chord(escape_args[1], escape_args[2], escape_args[3], escape_args[4]);
 					} else if(sub == 'X'){
 						input_clear_all_actions();
+					}
+				} else if(escape_cmd == 'j'){
+					/* F08a-lite — Stay Awake jiggler. */
+					uint8_t sub = escape_args[0];
+					if(sub == 'M'){
+						jiggler_pulse_now();
+					} else if(sub == 'I'){
+						uint32_t secs = (uint32_t)escape_args[1]
+						              | ((uint32_t)escape_args[2] << 8)
+						              | ((uint32_t)escape_args[3] << 16)
+						              | ((uint32_t)escape_args[4] << 24);
+						jiggler_set_autonomous_secs(secs);
+					} else if(sub == 'X'){
+						jiggler_cancel_autonomous();
 					}
 				}
 				return;

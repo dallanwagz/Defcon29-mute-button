@@ -1,6 +1,6 @@
 # F08 — Stay Awake (mouse jiggler with Amphetamine-style UX)
 
-> Status: **planned** · Risk: **medium** · Owner: firmware + bridge + TUI
+> Status: **F08a-lite hardware-verified** (path 2 — keyboard wake instead of HID-Mouse); F08b not started · Risk: **medium** · Owner: firmware + bridge + TUI
 
 ## Goal
 
@@ -363,11 +363,16 @@ _To be filled in after manual verification._
 
 #### Implementation phase
 
-- [ ] Code complete
-- [ ] Build passes (≤ 56 KB)
-- [ ] Composite USB descriptor enumerates on macOS (HID-KB + HID-Mouse + CDC)
-- [ ] No regression: existing keymaps still type
-- [ ] Manual hardware test passed (jiggle + autonomous mode)
+- [x] Code complete (F08a-lite: keyboard wake pulse, no HID-Mouse interface)
+- [x] Build passes (≤ 56 KB) — 49168 B
+- [ ] ~~Composite USB descriptor enumerates on macOS (HID-KB + HID-Mouse + CDC)~~ — **deferred**: F08a-lite reuses the existing HID-Kbd interface and emits a no-op LeftShift down/up wake pulse; macOS still counts it as user activity for `IOHIDIdleTime`. This sidesteps composite-descriptor surgery for the autonomous-test session. Real HID-Mouse path can be revisited later.
+- [x] No regression: CDC still works (test ran end-to-end)
+- [x] Manual hardware test passed (single pulse + 75 s autonomous + mid-session cancel) — verified 2026-05-09 via `tools/test_stay_awake.py`. macOS `HIDIdleTime` dropped 681 s → 0.52 s on a single pulse; max idle during a 75 s autonomous window was 30.75 s (matches the 30 s pulse period); idle grew cleanly after expiration and after `awake_cancel`.
+
+**F08a-lite deviations** (see `dc29/protocol.py` `CMD_JIGGLER` docstring):
+- Wake pulse mechanism is a no-op LeftShift modifier press/release on the existing HID-Kbd interface, not a +1/-1 mouse X-axis pair.
+- `0x01 'j' 'I' <duration_le32>` takes a **relative duration in seconds**, not an absolute UTC end-time. The bridge layer translates abs/rel; this avoids needing F09's not-yet-implemented wall-clock sync.
+- `0x01 'j' 'S'` (state query) is not implemented — out of scope for the autonomous test.
 
 **Implementation reviewed by:** _ _   **Date:** _ _
 

@@ -203,6 +203,33 @@ gone — the haptic click fills that gap.
 RAM-only; default returns to enabled on every reboot.
 """
 
+CMD_JIGGLER: int = ord("j")
+"""
+``0x01 'j' <sub> ...`` — F08a-lite Stay Awake jiggler.
+
+The "jiggle" is implemented as a no-op HID-Keyboard wake pulse
+(LeftShift down then up, no key) — macOS treats any HID input as user
+activity for ``IOHIDIdleTime`` accounting, so the host stays awake
+without any visible side effect (modifier alone produces no character).
+This is path 2 of the F08 design (see
+``docs/hardware-features/features/F08-mouse-jiggler.md``); the spec'd
+HID-Mouse interface is deferred — adding it requires composite USB
+descriptor surgery, which is high-risk for a one-shot autonomous flash.
+
+Sub-commands:
+
+* ``'j' 'M'`` — fire one wake pulse immediately.
+* ``'j' 'I' <duration_le32:4>`` — start autonomous mode for *duration*
+  seconds.  Badge fires one wake pulse every 30 s until the duration
+  elapses, then auto-stops.  Restart is allowed (replaces previous end).
+  Note: this differs from the spec, which uses an absolute UTC end-time
+  via the F09 wall-clock sync.  F09 isn't built yet, so F08a-lite uses
+  a relative duration and the bridge handles abs/rel translation.
+* ``'j' 'X'`` — cancel autonomous mode immediately.
+
+All state is RAM-only; rebooting clears autonomous mode.
+"""
+
 CMD_MOD_TABLE: int = ord("m")
 """
 ``0x01 'm' <sub> ...`` — F01/F02 modifier-action table.

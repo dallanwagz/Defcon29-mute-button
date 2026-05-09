@@ -44,6 +44,7 @@ from dc29.protocol import (
     CMD_SET_SLIDER,
     CMD_SET_SPLASH,
     CMD_HAPTIC_CLICK,
+    CMD_JIGGLER,
     CMD_MOD_TABLE,
     CMD_SET_KEY,
     CMD_QUERY_KEY,
@@ -506,6 +507,40 @@ class BadgeAPI:
         """
         cmd = bytes([ESCAPE, CMD_HAPTIC_CLICK, 1 if enabled else 0])
         self._write(cmd)
+
+    def awake_pulse(self) -> None:
+        """Fire one F08a-lite wake pulse on the badge.
+
+        Pulse is a no-op HID-Keyboard event (LeftShift down then up, no
+        key) — invisible to apps but counted as user activity by macOS for
+        ``IOHIDIdleTime``.  See :data:`~dc29.protocol.CMD_JIGGLER`.
+        """
+        self._write(bytes([ESCAPE, CMD_JIGGLER, ord("M")]))
+
+    def awake_set_duration(self, duration_secs: int) -> None:
+        """Start autonomous Stay Awake mode on the badge for *duration_secs*.
+
+        The badge fires one wake pulse every 30 s until the duration
+        elapses.  Restart is allowed (replaces previous end).  Passing
+        ``0`` is equivalent to :meth:`awake_cancel`.
+
+        Args:
+            duration_secs: How long the badge should keep the host awake,
+                in seconds.  Clamped to ``[0, 2**32 - 1]``.
+        """
+        if duration_secs < 0:
+            duration_secs = 0
+        if duration_secs > 0xFFFFFFFF:
+            duration_secs = 0xFFFFFFFF
+        d = duration_secs & 0xFFFFFFFF
+        self._write(bytes([
+            ESCAPE, CMD_JIGGLER, ord("I"),
+            d & 0xFF, (d >> 8) & 0xFF, (d >> 16) & 0xFF, (d >> 24) & 0xFF,
+        ]))
+
+    def awake_cancel(self) -> None:
+        """Cancel autonomous Stay Awake mode on the badge."""
+        self._write(bytes([ESCAPE, CMD_JIGGLER, ord("X")]))
 
     def set_key(self, button: int, modifier: int, keycode: int) -> None:
         """Write a single-key macro for *button* to badge EEPROM.

@@ -47,6 +47,7 @@
 #include <rww_eeprom.h>
 #include "keys.h"
 #include "input.h"
+#include "jiggler.h"
 #include "serialconsole.h"
 #include "wled_fx.h"
 
@@ -565,6 +566,7 @@ int main(void)
 		 * mapping fast-path to immediate single-tap (legacy behavior). */
 		if(USBPower && ((millis - last_usb_comms) < 100)){
 			input_tick();
+			jiggler_tick();
 
 			touch_sensors_measure();
 			if(p_selfcap_measure_data->measurement_done_touch == 1u){
@@ -1354,6 +1356,7 @@ void read_eeprom(void){
 
 	get_keymap();
 	input_init();
+	jiggler_init();
 }
 
 
