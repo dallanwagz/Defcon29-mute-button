@@ -65,32 +65,6 @@ CURSOR = PageDef(
     },
 )
 
-FIGMA = PageDef(
-    name="figma",
-    description="Figma — design shortcuts",
-    match_names=["figma"],
-    brand_color=(162, 89, 255),  # Figma purple
-    button_actions={
-        1: _a("duplicate",       ["cmd"], "d",   ["ctrl"], "d"),
-        2: _a("toggle-ui",       ["cmd"], "\\",  ["ctrl"], "\\"),
-        3: _a("find-replace",    ["cmd"], "f",   ["ctrl"], "f"),
-        4: _same("delete-layer",  [], "backspace"),
-    },
-)
-
-NOTION = PageDef(
-    name="notion",
-    description="Notion — workspace shortcuts",
-    match_names=["notion"],
-    brand_color=(255, 255, 255),  # Notion white (will flash subtle)
-    button_actions={
-        1: _same("insert-block", [], "/"),
-        2: _a("toggle-sidebar",  ["cmd"], "\\",  ["ctrl"], "\\"),
-        3: _a("quick-find",      ["cmd"], "p",   ["ctrl"], "p"),
-        4: _a("undo",            ["cmd"], "z",   ["ctrl"], "z"),
-    },
-)
-
 WORD = PageDef(
     name="word",
     description="Microsoft Word — document shortcuts",
@@ -150,20 +124,6 @@ CONFLUENCE = PageDef(
     },
 )
 
-LINEAR = PageDef(
-    name="linear",
-    description="Linear — issue tracker shortcuts",
-    match_names=["linear"],
-    match_window_title=True,
-    brand_color=(90, 81, 255),   # Linear indigo
-    button_actions={
-        1: _same("create-issue", [], "c"),
-        2: _same("assign-me",    [], "a"),
-        3: _same("filter",       [], "f"),
-        4: _same("archive-issue", [], "backspace"),
-    },
-)
-
 CHROME = PageDef(
     name="chrome",
     description="Chrome — browser shortcuts",
@@ -188,20 +148,6 @@ GITHUB = PageDef(
         2: _same("switch-branch", [], "w"),
         3: _same("file-finder",  [], "t"),
         4: _same("close-dialog", [], "escape"),
-    },
-)
-
-SERVICENOW = PageDef(
-    name="servicenow",
-    description="ServiceNow — portal shortcuts",
-    match_names=["servicenow"],
-    match_window_title=True,
-    brand_color=(111, 42, 134),  # ServiceNow purple
-    button_actions={
-        1: _a("new-tab",         ["cmd"], "t",   ["ctrl"], "t"),
-        2: _a("refresh",         ["cmd"], "r",   [], "f5"),
-        3: _a("find",            ["cmd"], "f",   ["ctrl"], "f"),
-        4: _a("back",            ["cmd"], "[",   ["alt"], "left"),
     },
 )
 
@@ -257,18 +203,14 @@ ALL_PAGES: list[PageDef] = [
     CHROME,
     # Web apps (window-title matching) — higher priority than generic Chrome
     SHAREPOINT,
-    SERVICENOW,
     CHATGPT,
     CLAUDE,
     GITHUB,
     CONFLUENCE,
     JIRA,
-    LINEAR,
     # Native desktop apps — highest priority among focus bridges
     WORD,
     EXCEL,
-    NOTION,
-    FIGMA,
     CURSOR,
     VSCODE,
 ]
