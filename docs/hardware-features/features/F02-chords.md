@@ -104,7 +104,30 @@ Hold B1 alone for 500 ms, then press B2: chord window has expired → long-press
 
 ## Implementation notes
 
-_Will be filled in as code lands, after design sign-off._
+### Firmware (2026-05-09)
+
+- Implementation co-located with F01 in `Firmware/Source/DC29/src/input.c`. The chord pass runs as Phase 2 of `input_tick()`, after each per-button SM has updated.
+- Chord detection: scan all `(a < b)` pairs where both buttons are in `BSM_PRESS_HELD` and `|press_start_ms[a] - press_start_ms[b]| <= CHORD_WINDOW_MS` (80 ms). If a chord mapping exists for the pair, fire it and mark both buttons `BSM_CONSUMED` (no further fire until release).
+- Three-finger fumble: third button entering `BSM_PRESS_HELD` finds no chord partner because the first two are already consumed; it simply runs through its own SM normally. (The existing 4-button-all-pressed effect-mode cycler still wins when all 4 are held simultaneously — that path runs upstream and zeros all four button flags before `input_tick()` sees them.)
+- Fast-path interaction: a button without any chord mapping does **not** participate in the chord scan and incurs no latency. Adding any chord mapping that includes button N causes button N to wait for the multi-tap window to expire before firing single-tap.
+
+### Protocol
+
+- `0x01 'm' 'C' <btn_a> <btn_b> <mod> <key>` — covered by F01's `'m'` parser; sub-cmd `'C'` takes 5 args.
+- `0x01 'b' 'C' <btn_a> <btn_b>` — emitted on chord fire; `dc29.badge.BadgeAPI.on_button_ext("chord", a, b)`.
+
+### Python
+
+- `BadgeAPI.set_chord_action(button_a, button_b, modifier, keycode)` provided. Order is normalized firmware-side.
+
+### Build impact
+
+- F02 added zero additional flash beyond F01 — the chord scan is ~25 LOC inside the same `input_tick()` function and the chord storage was already accounted for in F01's BSS budget.
+
+### Open follow-ups (deferred)
+
+- **TUI chord editor** on the Keys & Modifiers tab.
+- **EEPROM persistence** of chord mappings.
 
 ## Testing notes
 

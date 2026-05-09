@@ -9,6 +9,7 @@
 #include "pwm.h"
 #include "keys.h"
 #include "wled_fx.h"
+#include "input.h"
 
 extern bool main_b_cdc_enable;
 
@@ -130,10 +131,24 @@ void updateSerialConsole(void){
 				if(data == 'S'){ escape_args_needed = 1; escape_state = 2; return; }
 				if(data == 'I'){ escape_args_needed = 1; escape_state = 2; return; }
 				if(data == 'W'){ escape_args_needed = 3; escape_state = 2; return; }
+				/* F01/F02 modifier-action table.  Variable arg count by sub-cmd:
+				 *   'D'/'T'/'L' <btn> <mod> <key>          → 4 args after 'm'
+				 *   'C' <btn_a> <btn_b> <mod> <key>        → 5 args after 'm'
+				 *   'X'                                     → 1 arg after 'm'
+				 * First arg is the sub-cmd; we expand args_needed once we see it. */
+				if(data == 'm'){ escape_args_needed = 1; escape_state = 2; return; }
 				return;
 			}
 			if(escape_state == 2){
 				escape_args[escape_args_count++] = (uint8_t)data;
+				/* Variable-length expansion for 'm' once sub-cmd byte arrives. */
+				if(escape_cmd == 'm' && escape_args_count == 1){
+					uint8_t sub = escape_args[0];
+					if(sub == 'D' || sub == 'T' || sub == 'L') escape_args_needed = 4;
+					else if(sub == 'C') escape_args_needed = 5;
+					else if(sub == 'X') escape_args_needed = 1; /* already done */
+					else { escape_state = 0; return; } /* unknown sub-cmd */
+				}
 				if(escape_args_count < escape_args_needed) return;
 				escape_state = 0;
 				if(escape_cmd == 'K'){
@@ -183,6 +198,21 @@ void updateSerialConsole(void){
 					wled_seg.speed     = escape_args[0];
 					wled_seg.intensity = escape_args[1];
 					wled_seg.palette   = (uint8_t)(escape_args[2] % WLED_PAL_COUNT);
+				} else if(escape_cmd == 'm'){
+					/* F01/F02 modifier-action table.
+					 * sub-cmd encoding from docs/hardware-features/DESIGN.md §1. */
+					uint8_t sub = escape_args[0];
+					if(sub == 'D'){
+						input_set_action_double(escape_args[1], escape_args[2], escape_args[3]);
+					} else if(sub == 'T'){
+						input_set_action_triple(escape_args[1], escape_args[2], escape_args[3]);
+					} else if(sub == 'L'){
+						input_set_action_long(escape_args[1], escape_args[2], escape_args[3]);
+					} else if(sub == 'C'){
+						input_set_action_chord(escape_args[1], escape_args[2], escape_args[3], escape_args[4]);
+					} else if(sub == 'X'){
+						input_clear_all_actions();
+					}
 				}
 				return;
 			}

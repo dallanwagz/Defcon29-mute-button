@@ -46,6 +46,7 @@
 #include "pwm.h"
 #include <rww_eeprom.h>
 #include "keys.h"
+#include "input.h"
 #include "serialconsole.h"
 #include "wled_fx.h"
 
@@ -549,12 +550,12 @@ int main(void)
 		/* --- LED effect animation --- */
 		update_effects();
 
-		/* --- HID key sending (USB connected only) --- */
+		/* --- HID key sending (USB connected only) ---
+		 * F01/F02 input state machine consumes button1..button4 flags and
+		 * decides single/double/triple/long/chord.  Buttons with no modifier
+		 * mapping fast-path to immediate single-tap (legacy behavior). */
 		if(USBPower && ((millis - last_usb_comms) < 100)){
-			if(button1){ button1 = false; send_keys(1); }
-			if(button2){ button2 = false; send_keys(2); }
-			if(button3){ button3 = false; send_keys(3); }
-			if(button4){ button4 = false; send_keys(4); }
+			input_tick();
 
 			touch_sensors_measure();
 			if(p_selfcap_measure_data->measurement_done_touch == 1u){
@@ -1343,6 +1344,7 @@ void read_eeprom(void){
 	rww_eeprom_emulator_read_buffer(EEP_LED_4_PRESSED_COLOR, led4pressedcolor, 3);
 
 	get_keymap();
+	input_init();
 }
 
 

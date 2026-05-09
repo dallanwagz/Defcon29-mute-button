@@ -231,7 +231,41 @@ Modifier mappings live in RAM, populated by bridges on connect, lost on power-cy
 
 ## Implementation notes
 
-_Will be filled in as code lands, after design sign-off._
+### Firmware (2026-05-09)
+
+- New module `Firmware/Source/DC29/src/input.{h,c}` (~280 LOC) added to `Makefile` SRCS.
+- State machine: `BSM_IDLE → BSM_PRESS_HELD → BSM_AWAIT_TAPCOUNT → (fire) → IDLE`. Long-press fires on release if `held >= LONG_PRESS_THRESH_MS`. Multi-tap counter increments while presses keep arriving within `MULTI_TAP_WINDOW_MS`.
+- Fast path: if a button has **no** modifier mappings (double/triple/long/any chord involving it), the SM short-circuits — single-tap fires immediately on the existing ISR flag exactly as legacy. **No latency penalty for unmapped buttons.**
+- Release detection by polling `port_pin_get_input_level()` (pull-up; LOW = pressed). EXTINT remains falling-edge-only as before.
+- `input_tick()` is called from the main loop's USB-connected branch in `main.c`, replacing the four `if(buttonN){...}` statements.
+- `input_init()` called once from `read_eeprom()` so the table starts zeroed.
+- All four legacy single-action keymaps continue to fire via `send_keys(n)` — `input.c` calls it for the single-tap case.
+- Modifier action storage: 4 × 3 (double/triple/long) + 4×4 (chord pairs) = 28 `(mod, key)` entries = 56 bytes BSS. RAM-only.
+- 4-button "all pressed" chord (existing effect-mode cycler) is untouched — it runs upstream in `main.c` and clears `button1..4` flags before `input_tick()` sees them.
+
+### Protocol parser (`serialconsole.c`)
+
+- New `'m'` letter accepted with sub-command byte. Variable arg count expanded after sub-cmd byte: `'D'/'T'/'L'` → 4 args, `'C'` → 5 args, `'X'` → 1 arg (just the sub-cmd).
+- `'A'` was already taken (legacy keymap-write ACK); using lowercase `'m'` per [DESIGN.md §1](../DESIGN.md#1-protocol-command-letter-allocation).
+
+### Python (`dc29/protocol.py`, `dc29/badge.py`)
+
+- `CMD_MOD_TABLE = ord('m')` and `EVT_BUTTON_EXT = ord('b')` added.
+- `BadgeAPI.set_modifier_action(kind, button, mod, key)` for double/triple/long.
+- `BadgeAPI.set_chord_action(a, b, mod, key)` (firmware normalizes ordering).
+- `BadgeAPI.clear_modifier_actions()`.
+- `BadgeAPI.on_button_ext` callback slot — fires with `(kind, btn_a, btn_b_or_none)` where `kind ∈ {"double", "triple", "long", "chord"}`.
+- Parser handles `EVT_BUTTON_EXT`'s variable length (3 or 4 bytes) by reading the kind byte first, then expanding `_rx_args_needed` accordingly.
+
+### Build impact
+
+- Flash: 47,472 → 48,712 bytes (+1,240). Well within the 56 KB cap.
+- RAM (BSS): +56 bytes for the modifier table.
+
+### Open follow-ups (deferred)
+
+- **TUI editor** for modifier actions on the Keys & Modifiers tab — pending (see [DESIGN.md §9 TUI organization](../DESIGN.md#9-tui-organization)).
+- **EEPROM persistence** of modifier actions — deferred per Q4 default, lives in a future feature.
 
 ## Testing notes
 

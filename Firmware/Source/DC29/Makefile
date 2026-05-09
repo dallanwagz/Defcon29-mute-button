@@ -170,6 +170,7 @@ SRCS := \
     $(SRCROOT)/ASF/sam0/utils/cmsis/samd21/source/system_samd21.c \
     $(SRCROOT)/ASF/sam0/utils/syscalls/gcc/syscalls.c \
     $(SRCROOT)/comms.c \
+    $(SRCROOT)/input.c \
     $(SRCROOT)/keys.c \
     $(SRCROOT)/main.c \
     $(SRCROOT)/pwm.c \

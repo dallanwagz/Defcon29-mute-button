@@ -43,10 +43,12 @@ from dc29.protocol import (
     CMD_PAINT_ALL,
     CMD_SET_SLIDER,
     CMD_SET_SPLASH,
+    CMD_MOD_TABLE,
     CMD_SET_KEY,
     CMD_QUERY_KEY,
     CMD_WLED_SET,
     EVT_BUTTON,
+    EVT_BUTTON_EXT,
     EVT_KEY_REPLY,
     EVT_KEY_ACK,
     EVT_EFFECT_MODE,
@@ -63,6 +65,8 @@ _EVT_ARG_COUNTS: dict[int, int] = {
     EVT_KEY_ACK:     1,  # n
     EVT_EFFECT_MODE: 1,  # mode
     EVT_CHORD:       1,  # type
+    # EVT_BUTTON_EXT is variable-length (3 or 4 bytes after escape).
+    # We special-case it in _parse_rx after the kind byte arrives.
 }
 
 
@@ -162,6 +166,12 @@ class BadgeAPI:
         # ------------------------------------------------------------------
 
         self.on_button_press: Optional[Callable[[int, int, int], None]] = None
+
+        # Extended button events from F01/F02.  Callback signature:
+        #   on_button_ext(kind: str, btn_a: int, btn_b: int | None)
+        # where kind is one of "double", "triple", "long", "chord".
+        # btn_b is None for non-chord events.
+        self.on_button_ext: Optional[Callable[[str, int, Optional[int]], None]] = None
         """Fallback button-press callback.
 
         Fired only when no registered :class:`_ButtonHandler` (added via
@@ -488,6 +498,63 @@ class BadgeAPI:
         cmd = bytes([ESCAPE, CMD_SET_KEY, button & 0xFF, modifier & 0xFF, keycode & 0xFF])
         self._write(cmd)
 
+    # ------------------------------------------------------------------
+    # F01/F02 modifier-action table (RAM-only on the badge; bridges
+    # repopulate on each connect).
+    # ------------------------------------------------------------------
+
+    def set_modifier_action(
+        self,
+        kind: str,
+        button: int,
+        modifier: int,
+        keycode: int,
+    ) -> None:
+        """Set a per-button tap-count or long-press action.
+
+        Args:
+            kind:     One of ``"double"``, ``"triple"``, ``"long"``.
+            button:   Button number, 1–4.
+            modifier: HID modifier byte (use 0 for none, 0xF0 for media keys).
+            keycode:  HID keycode byte.  Setting both ``modifier=0`` and
+                ``keycode=0`` clears the entry.
+        """
+        sub_map = {"double": ord("D"), "triple": ord("T"), "long": ord("L")}
+        sub = sub_map[kind]
+        cmd = bytes([
+            ESCAPE, CMD_MOD_TABLE, sub,
+            button & 0xFF, modifier & 0xFF, keycode & 0xFF,
+        ])
+        self._write(cmd)
+
+    def set_chord_action(
+        self,
+        button_a: int,
+        button_b: int,
+        modifier: int,
+        keycode: int,
+    ) -> None:
+        """Set the action fired when buttons ``a`` and ``b`` are pressed
+        together within ~80 ms.
+
+        Args:
+            button_a, button_b: 1–4, must differ.  Order is normalized on
+                the badge (smaller → larger).
+            modifier: HID modifier byte.  ``0, 0`` clears the entry.
+            keycode:  HID keycode byte.
+        """
+        cmd = bytes([
+            ESCAPE, CMD_MOD_TABLE, ord("C"),
+            button_a & 0xFF, button_b & 0xFF,
+            modifier & 0xFF, keycode & 0xFF,
+        ])
+        self._write(cmd)
+
+    def clear_modifier_actions(self) -> None:
+        """Clear every modifier and chord action on the badge."""
+        cmd = bytes([ESCAPE, CMD_MOD_TABLE, ord("X")])
+        self._write(cmd)
+
     def query_key(self, button: int) -> None:
         """Ask the badge to report the current keymap for *button*.
 
@@ -642,6 +709,11 @@ class BadgeAPI:
         elif self._rx_state == 1:
             self._rx_cmd = b
             self._rx_args = []
+            if b == EVT_BUTTON_EXT:
+                # Variable-length: kind byte arrives next, determines remainder.
+                self._rx_args_needed = 1  # tentative; will expand after kind
+                self._rx_state = 2
+                return
             args_needed = _EVT_ARG_COUNTS.get(b)
             if args_needed is None:
                 self._rx_state = 0
@@ -654,6 +726,16 @@ class BadgeAPI:
 
         elif self._rx_state == 2:
             self._rx_args.append(b)
+            # Special case: EVT_BUTTON_EXT determines length from first byte (kind).
+            if self._rx_cmd == EVT_BUTTON_EXT and len(self._rx_args) == 1:
+                kind = self._rx_args[0]
+                if kind == ord('C'):
+                    self._rx_args_needed = 3   # kind + btn_a + btn_b
+                elif kind in (ord('2'), ord('3'), ord('L')):
+                    self._rx_args_needed = 2   # kind + btn
+                else:
+                    self._rx_state = 0          # unknown kind — drop
+                    return
             if len(self._rx_args) >= self._rx_args_needed:
                 self._dispatch_rx()
                 self._rx_state = 0
@@ -725,6 +807,26 @@ class BadgeAPI:
                 except Exception:
                     log.exception("on_effect_mode callback raised")
             self._fire_state_change()
+
+        elif cmd == EVT_BUTTON_EXT and len(args) >= 2:
+            kind_byte = args[0]
+            kind_map = {ord('2'): 'double', ord('3'): 'triple', ord('L'): 'long', ord('C'): 'chord'}
+            kind = kind_map.get(kind_byte)
+            if kind is None:
+                return
+            btn_a = args[1]
+            btn_b = args[2] if (kind == 'chord' and len(args) >= 3) else None
+            log.info("Extended button event: kind=%s btn_a=%d btn_b=%s", kind, btn_a, btn_b)
+            try:
+                from dc29.stats import record
+                record.button_press(btn_a)
+            except Exception:
+                pass
+            if self.on_button_ext is not None:
+                try:
+                    self.on_button_ext(kind, btn_a, btn_b)
+                except Exception:
+                    log.exception("on_button_ext callback raised")
 
         elif cmd == EVT_CHORD and len(args) == 1:
             chord_type = args[0]

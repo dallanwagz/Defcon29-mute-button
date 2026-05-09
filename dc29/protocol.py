@@ -185,6 +185,27 @@ Arguments (1 byte):
   * ``v`` — ``0`` to disable, ``1`` to enable (firmware default is enabled)
 """
 
+CMD_MOD_TABLE: int = ord("m")
+"""
+``0x01 'm' <sub> ...`` — F01/F02 modifier-action table.
+
+Lowercase ``'m'`` to avoid colliding with the existing ``'M'`` (Teams mute)
+command.  Sub-commands:
+
+* ``'m' 'D' <btn> <mod> <key>`` — set the **double-tap** action for button
+  ``btn`` (1–4).
+* ``'m' 'T' <btn> <mod> <key>`` — set the **triple-tap** action.
+* ``'m' 'L' <btn> <mod> <key>`` — set the **long-press** action.
+* ``'m' 'C' <btn_a> <btn_b> <mod> <key>`` — set the chord action for the
+  unordered pair ``{btn_a, btn_b}``.  Both 1–4, must differ; firmware
+  enforces ``a < b`` internally.
+* ``'m' 'X'`` — clear all RAM modifier mappings.
+
+``mod=0, key=0`` clears that specific entry.  Mappings are RAM-only on
+this firmware version (per F01 design); bridges should re-send on every
+CDC connect.
+"""
+
 CMD_WLED_SET: int = ord("W")
 """
 ``0x01 'W' speed intensity palette`` — Set the WLED-effect knobs in one shot.
@@ -257,6 +278,21 @@ Payload (1 byte):
   * ``n`` — chord type: ``1`` = short press, ``2`` = long press
 
 Long-press chords (n=2) are used to cycle through firmware LED effects.
+"""
+
+EVT_BUTTON_EXT: int = ord("b")
+"""
+``0x01 'b' <kind> <btn> [<btn_b>]`` — Extended button event from F01/F02.
+
+Lowercase ``'b'`` to namespace cleanly against the legacy ``'B'`` event.
+``kind`` is one of:
+
+* ``'2'`` — double-tap on button ``btn`` (1–4).  3 bytes after escape.
+* ``'3'`` — triple-tap on button ``btn``.  3 bytes after escape.
+* ``'L'`` — long-press on button ``btn``.  3 bytes after escape.
+* ``'C'`` — 2-button chord; payload is ``btn`` ``btn_b`` (both 1-based, ``btn < btn_b``).  4 bytes after escape.
+
+Single-tap continues to use the legacy ``'B'`` event for backwards compat.
 """
 
 # ---------------------------------------------------------------------------

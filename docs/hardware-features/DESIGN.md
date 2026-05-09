@@ -12,7 +12,8 @@
 6. [Input state machine (F01 / F02)](#6-input-state-machine-f01--f02)
 7. [Persistence policy summary](#7-persistence-policy-summary)
 8. [`FIRMWARE_VERSION` versioning + migration](#8-firmware_version-versioning--migration)
-9. [Open cross-cutting questions](#9-open-cross-cutting-questions)
+9. [TUI organization](#9-tui-organization)
+10. [Open cross-cutting questions](#10-open-cross-cutting-questions)
 
 ---
 
@@ -317,7 +318,58 @@ If F07 ends up not needing EEPROM (e.g., we move vault to RAM-only too), the bum
 
 ---
 
-## 9. Open cross-cutting questions
+## 9. TUI organization
+
+**Locked decision (2026-05-09):** every feature with user-controllable settings or runtime status surfaces them in the existing Textual TUI (`dc29/tui/app.py`). Related settings are grouped on the same tab — we don't ship a separate tab per feature.
+
+### Final tab plan after the 11-feature batch
+
+| Slot | Tab name             | Owns                                                    |
+|:----:|----------------------|---------------------------------------------------------|
+| 1    | Dashboard (existing) | + current Stay Awake status, current HID mode (F10)     |
+| 2    | Keys & Modifiers     | (extends existing Keys) + F01 double/triple/long rows + F02 chord matrix |
+| 3    | WLED (existing)      | unchanged                                                |
+| 4    | Effects (existing)   | unchanged                                                |
+| 5    | Bridges & Inputs (existing) | + F05 beat-buzzer toggle (auto via manifest)      |
+| 6    | **Sounds** (new)     | F03 haptic toggle + freq/dur · F04 pattern audition · per-event-pattern bindings |
+| 7    | **Macros** (new)     | F07 vault editor (slot, payload, fire/clear) · F09 TOTP provisioning + fire |
+| 8    | **Stay Awake** (new) | F08 — full Amphetamine-style UX (per F08 mockup)         |
+| 9    | Stats (existing)     | unchanged                                                |
+| 10   | Log (existing)       | unchanged                                                |
+| 11   | LEDs (existing)      | unchanged                                                |
+
+Only **3 new tabs** added (Sounds, Macros, Stay Awake). Existing tabs are extended in-place; nothing currently on a tab moves.
+
+### Per-feature TUI ownership (where each setting/status lives)
+
+| Feature | Setting / status                                | Lives on tab        |
+|---------|--------------------------------------------------|---------------------|
+| F01     | per-button modifier actions (double/triple/long) | Keys & Modifiers    |
+| F02     | chord-pair → action matrix                       | Keys & Modifiers    |
+| F03     | haptic click on/off, frequency, duration         | Sounds              |
+| F04     | "audition" each pattern, per-event-→-pattern map | Sounds              |
+| F05     | beat-buzzer enable/disable                       | Bridges & Inputs (auto) |
+| F06     | (no persistent setting — runtime only)           | none                |
+| F07     | vault slots (read/write/fire/clear)              | Macros              |
+| F08     | Stay Awake quick-start, countdown, LED mode      | Stay Awake          |
+| F09     | TOTP slot (provision/fire/list)                  | Macros              |
+| F10     | active HID mode display + how-to-change hint     | Dashboard (status)  |
+| F11     | (browser-based UI subsumes most TUI editing)     | none                |
+
+### Status indicators on Dashboard
+
+The Dashboard already shows badge connection + Teams mute. After this batch it gains:
+
+- **Stay Awake**: `idle` / `active 03:42:18 remaining` — collapsing single-line indicator; full UX still on its own tab.
+- **HID mode** (F10): one-line, shown once we know it (`Default (kbd+mouse+CDC)`).
+
+### Bridge-driven settings vs. badge-driven
+
+For settings that live in the badge (haptic click, modifier actions, vault, TOTP), the TUI reads/writes via the existing `BadgeAPI` over CDC. For settings that live in the bridge (Stay Awake session), the TUI talks to the bridge process via the same singleton-state pattern other bridges already use.
+
+---
+
+## 10. Open cross-cutting questions
 
 > Tick a box for each question. Use **🔄 Modify** if you want a tweak rather than a clean approve/reject. Use the master tracker at [`REVIEW.md`](REVIEW.md) to see overall progress.
 
