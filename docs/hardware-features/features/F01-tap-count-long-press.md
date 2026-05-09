@@ -1,6 +1,6 @@
 # F01 — Tap-count + long-press modifiers
 
-> Status: **planned** · Risk: **low** · Owner: firmware
+> Status: **hardware-verified** · Risk: **low** · Owner: firmware
 
 ## Goal
 
@@ -282,9 +282,9 @@ _To be filled in after manual verification._
 
 ### Implementation phase
 
-- [ ] Code complete
-- [ ] Build passes (≤ 56 KB)
-- [ ] Manual hardware test passed (all items in Test plan above)
+- [x] Code complete
+- [x] Build passes (≤ 56 KB) — 48712 B
+- [x] Manual hardware test passed (all items in Test plan above) — verified 2026-05-09 via `tools/test_input_modifiers.py`: single (legacy + slow-path), double, triple, long-press all confirmed
 - [ ] Implementation notes filled in
 - [ ] Testing notes filled in
 
