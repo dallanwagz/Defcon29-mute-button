@@ -36,11 +36,21 @@ extern bool main_b_cdc_enable;
      0x01 C n        -> chord fired (n=1 short, n=2 long)
    0x01 never appears in menu traffic so this channel is safe to use concurrently. */
 #define STATUS_ESCAPE 0x01
-static uint8_t escape_state = 0;  /* 0=idle 1=awaiting_cmd 2=collecting_args */
-static uint8_t escape_cmd = 0;
-static uint8_t escape_args[12];   /* max 12 args (P command: r1 g1 b1 r2 g2 b2 r3 g3 b3 r4 g4 b4) */
-static uint8_t escape_args_count = 0;
-static uint8_t escape_args_needed = 0;
+/* Escape parser states.  3..5 are dedicated to the variable-length 'h'
+ * (F06 HID burst) path which can carry up to MAX_BURST_PAIRS*2 bytes —
+ * far more than escape_args[12] can hold, so 'h' bypasses escape_args
+ * entirely and streams into hid_burst's own buffer via _burst_recv_buf. */
+static uint8_t  escape_state = 0;  /* 0=idle 1=awaiting_cmd 2=collecting_args */
+                                   /* 3=h_len_lo 4=h_len_hi 5=h_data        */
+static uint8_t  escape_cmd = 0;
+static uint8_t  escape_args[12];   /* max 12 args (P command: r1 g1 b1 r2 g2 b2 r3 g3 b3 r4 g4 b4) */
+static uint8_t  escape_args_count = 0;
+static uint8_t  escape_args_needed = 0;
+
+/* F06 burst-receive scratch — sized to the firmware's MAX_BURST_PAIRS. */
+static uint8_t  _burst_recv_buf[MAX_BURST_PAIRS * 2];
+static uint16_t _burst_recv_n_pairs = 0;
+static uint16_t _burst_recv_count = 0;
 
 extern uint8_t keymaplength;
 extern uint8_t keymap[];
@@ -149,6 +159,15 @@ void updateSerialConsole(void){
 				if(data == 'j'){ escape_args_needed = 1; escape_state = 2; return; }
 				/* F04 — named beep patterns.  1 arg = pattern id (0..255). */
 				if(data == 'p'){ escape_args_needed = 1; escape_state = 2; return; }
+				/* F06 — HID burst.  Variable-length: 2-byte LE length, then
+				 * length*2 (mod, key) bytes.  Bypasses escape_args entirely
+				 * via the dedicated _burst_recv_buf state machine. */
+				if(data == 'h'){
+					_burst_recv_n_pairs = 0;
+					_burst_recv_count   = 0;
+					escape_state        = 3;
+					return;
+				}
 				return;
 			}
 			if(escape_state == 2){
@@ -252,6 +271,36 @@ void updateSerialConsole(void){
 					} else if(sub == 'X'){
 						jiggler_cancel_autonomous();
 					}
+				}
+				return;
+			}
+			/* F06 HID burst — variable-length receiver. */
+			if(escape_state == 3){
+				_burst_recv_n_pairs = (uint8_t)data;       /* length lo */
+				escape_state = 4;
+				return;
+			}
+			if(escape_state == 4){
+				_burst_recv_n_pairs |= ((uint16_t)data) << 8;  /* length hi */
+				if(_burst_recv_n_pairs == 0){
+					hid_burst_cancel();
+					escape_state = 0;
+					return;
+				}
+				if(_burst_recv_n_pairs > MAX_BURST_PAIRS){
+					/* Drop the rest of the descriptor — host should retry
+					 * with a smaller chunk per the documented cap. */
+					escape_state = 0;
+					return;
+				}
+				escape_state = 5;
+				return;
+			}
+			if(escape_state == 5){
+				_burst_recv_buf[_burst_recv_count++] = (uint8_t)data;
+				if(_burst_recv_count >= (uint16_t)(_burst_recv_n_pairs * 2)){
+					hid_burst(_burst_recv_buf, _burst_recv_n_pairs);
+					escape_state = 0;
 				}
 				return;
 			}

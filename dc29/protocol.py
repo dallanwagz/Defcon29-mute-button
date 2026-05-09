@@ -203,6 +203,34 @@ gone — the haptic click fills that gap.
 RAM-only; default returns to enabled on every reboot.
 """
 
+CMD_HID_BURST: int = ord("h")
+"""
+``0x01 'h' <n_le16> <mod1> <key1> ... <modN> <keyN>`` — F06 hyper-fast
+HID burst.
+
+Fires a back-to-back sequence of (mod, key) HID reports at the badge's
+native polling rate (~10 ms / frame).  Useful for typing pre-recorded
+strings (F07 vault), TOTP codes (F09), or as a stress-test of macro
+receivers.
+
+Arguments:
+  * ``n_le16`` (2 bytes, little-endian) — number of (mod, key) pairs
+    that follow.  ``0`` cancels any in-progress burst.
+  * Then ``n * 2`` bytes: alternating ``mod`` and ``key`` codes using
+    the same encoding as the per-button keymap.
+
+Hard cap: ``MAX_BURST_PAIRS = 256`` per command.  The host helper
+:meth:`~dc29.badge.BadgeAPI.hid_burst` automatically chunks payloads
+larger than that into successive bursts.
+
+A second burst command while one is running is rejected with
+``BURST_BUSY`` (silently dropped on the firmware side; future versions
+may emit a decline event).
+"""
+
+MAX_BURST_PAIRS: int = 256
+"""Hard cap on a single F06 burst.  Larger payloads must be chunked."""
+
 CMD_BEEP_PATTERN: int = ord("p")
 """
 ``0x01 'p' <pattern_id>`` — F04 named beep pattern.

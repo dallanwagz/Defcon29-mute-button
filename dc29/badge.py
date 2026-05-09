@@ -45,8 +45,10 @@ from dc29.protocol import (
     CMD_SET_SPLASH,
     CMD_BEEP_PATTERN,
     CMD_HAPTIC_CLICK,
+    CMD_HID_BURST,
     CMD_JIGGLER,
     CMD_MOD_TABLE,
+    MAX_BURST_PAIRS,
     CMD_SET_KEY,
     CMD_QUERY_KEY,
     CMD_WLED_SET,
@@ -60,6 +62,44 @@ from dc29.protocol import (
 )
 
 log = logging.getLogger(__name__)
+
+
+# ----------------------------------------------------------------------
+# ASCII → HID Usage ID conversion (for F06 type_string convenience).
+# Reference: HID Usage Tables, page 7 (Keyboard / Keypad).  US layout.
+# ----------------------------------------------------------------------
+
+_HID_MOD_LSHIFT = 0x02
+
+# Unshifted printable map.  Values are HID Usage IDs.
+_ASCII_UNSHIFTED: dict[str, int] = {
+    **{ch: 4 + i for i, ch in enumerate("abcdefghijklmnopqrstuvwxyz")},
+    "1": 0x1E, "2": 0x1F, "3": 0x20, "4": 0x21, "5": 0x22,
+    "6": 0x23, "7": 0x24, "8": 0x25, "9": 0x26, "0": 0x27,
+    "\n": 0x28, "\t": 0x2B, " ": 0x2C,
+    "-": 0x2D, "=": 0x2E, "[": 0x2F, "]": 0x30, "\\": 0x31,
+    ";": 0x33, "'": 0x34, "`": 0x35, ",": 0x36, ".": 0x37, "/": 0x38,
+}
+
+# Shifted-only printable map (each maps to (key, with_shift=True)).
+_ASCII_SHIFTED: dict[str, int] = {
+    **{ch: 4 + i for i, ch in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ")},
+    "!": 0x1E, "@": 0x1F, "#": 0x20, "$": 0x21, "%": 0x22,
+    "^": 0x23, "&": 0x24, "*": 0x25, "(": 0x26, ")": 0x27,
+    "_": 0x2D, "+": 0x2E, "{": 0x2F, "}": 0x30, "|": 0x31,
+    ":": 0x33, '"': 0x34, "~": 0x35, "<": 0x36, ">": 0x37, "?": 0x38,
+}
+
+
+def _ascii_to_hid_pair(ch: str) -> Optional[tuple[int, int]]:
+    """Return ``(modifier, keycode)`` for one ASCII char, or ``None`` if
+    no mapping exists (control chars beyond newline/tab, non-ASCII)."""
+    if ch in _ASCII_UNSHIFTED:
+        return (0, _ASCII_UNSHIFTED[ch])
+    if ch in _ASCII_SHIFTED:
+        return (_HID_MOD_LSHIFT, _ASCII_SHIFTED[ch])
+    return None
+
 
 # Argument counts for each incoming event type (bytes after the command byte).
 _EVT_ARG_COUNTS: dict[int, int] = {
@@ -508,6 +548,64 @@ class BadgeAPI:
         """
         cmd = bytes([ESCAPE, CMD_HAPTIC_CLICK, 1 if enabled else 0])
         self._write(cmd)
+
+    def hid_burst(self, pairs) -> None:
+        """Fire a back-to-back HID burst on the badge (F06).
+
+        Args:
+            pairs: Iterable of ``(modifier, keycode)`` tuples.  Both bytes
+                use the same encoding as the per-button keymap (modifier
+                is a HID modifier bitmap; keycode is a HID Usage ID).
+                Payloads longer than :data:`~dc29.protocol.MAX_BURST_PAIRS`
+                (256) are split into successive bursts automatically.
+
+        Each pair is held for 4 × 10 ms frames on the firmware side
+        (modifier-down, key-down, key-up, modifier-up), so the wall-clock
+        cost is roughly ``len(pairs) * 40 ms``.  The badge's main loop
+        keeps running during the burst (LED ticks, button polling, beep
+        engine — see DESIGN.md §5).
+        """
+        flat: list[int] = []
+        for mod, key in pairs:
+            flat.append(int(mod) & 0xFF)
+            flat.append(int(key) & 0xFF)
+        # Chunk into MAX_BURST_PAIRS-sized bursts.  Within each chunk the
+        # 16-bit length is little-endian.
+        i = 0
+        n_pairs_total = len(flat) // 2
+        while i < n_pairs_total:
+            chunk_n = min(MAX_BURST_PAIRS, n_pairs_total - i)
+            buf = bytearray()
+            buf.append(ESCAPE)
+            buf.append(CMD_HID_BURST)
+            buf.append(chunk_n & 0xFF)
+            buf.append((chunk_n >> 8) & 0xFF)
+            buf.extend(flat[i * 2 : (i + chunk_n) * 2])
+            self._write(bytes(buf))
+            # Wait for the chunk to finish before sending the next one,
+            # otherwise the firmware drops the second burst as BURST_BUSY.
+            # Per-pair cost is 4 frames × BURST_FRAME_MS (firmware-side,
+            # currently 2 ms = 8 ms/pair); add slack for chunk handover.
+            import time as _t
+            _t.sleep(chunk_n * 0.010 + 0.05)
+            i += chunk_n
+
+    def hid_burst_cancel(self) -> None:
+        """Cancel any in-progress F06 burst (sends a zero-length burst)."""
+        self._write(bytes([ESCAPE, CMD_HID_BURST, 0, 0]))
+
+    def type_string(self, text: str) -> None:
+        """Type *text* via :meth:`hid_burst`.
+
+        Converts each ASCII character to (modifier, keycode) using the
+        US HID Usage table.  Characters with no mapping (control chars
+        beyond newline/tab, non-ASCII) are silently dropped.
+
+        Convenience wrapper for testing and for bridges that want to
+        type something quick without owning the full HID conversion.
+        """
+        pairs = [p for ch in text for p in (_ascii_to_hid_pair(ch),) if p is not None]
+        self.hid_burst(pairs)
 
     def play_beep(self, pattern) -> None:
         """Play one of the firmware-side F04 beep patterns.

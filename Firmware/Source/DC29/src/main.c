@@ -568,6 +568,7 @@ int main(void)
 			input_tick();
 			jiggler_tick();
 			beep_pattern_tick();
+			hid_burst_tick();
 
 			touch_sensors_measure();
 			if(p_selfcap_measure_data->measurement_done_touch == 1u){
