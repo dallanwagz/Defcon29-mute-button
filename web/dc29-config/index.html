@@ -211,6 +211,12 @@
       <label><input type="checkbox" id="cb-flash" checked> button-press takeover animation</label>
     </div>
     <div class="row">
+      <label><input type="checkbox" id="cb-slider" checked> capacitive slider injects volume keys</label>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="cb-splash" checked> button-press splash during effects</label>
+    </div>
+    <div class="row">
       <label for="beep-pattern">Play beep:</label>
       <select id="beep-pattern">
         <option value="1">CONFIRM</option>
@@ -227,6 +233,65 @@
     </div>
   </div>
 
+  <div class="panel">
+    <h2>TOTP (F09)</h2>
+    <p class="hint">
+      RFC 6238 6-digit TOTP, 30 s window.  Provision pushes the
+      base32-decoded raw key to the badge's EEPROM (1 slot).  Fire
+      syncs the host clock to the badge then types the current code
+      into the focused window — there's a 3 s countdown so you can
+      switch tabs.  <b>Plaintext EEPROM</b> — never use for high-stakes
+      accounts.
+    </p>
+    <div class="row">
+      <label for="totp-label">Label (≤ 4 chars):</label>
+      <input type="text" id="totp-label" maxlength="4" placeholder="GH" style="width: 80px">
+      <label for="totp-secret">Base32 secret:</label>
+      <input type="text" id="totp-secret" placeholder="JBSWY3DPEHPK3PXP" style="width: 240px">
+      <button id="btn-totp-provision">Provision</button>
+    </div>
+    <div class="row">
+      <button id="btn-totp-fire" class="primary">Fire current code</button>
+      <button id="btn-totp-refresh">Refresh list</button>
+    </div>
+    <div id="totp-list-display" style="margin-top: 10px; color: var(--text-muted); font-size: 13px;">
+      (no list fetched)
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Effect mode</h2>
+    <p class="hint">
+      Firmware-driven LED effects.  Picks one and sends it; the badge
+      keeps it running until you switch.  <code>Off</code> hands LEDs
+      back to whatever's painting them (manual swatch / Stay Awake).
+    </p>
+    <div class="row">
+      <label for="effect-pick">Effect:</label>
+      <select id="effect-pick">
+        <option value="0">Off</option>
+        <option value="1">Rainbow chase</option>
+        <option value="2">Breathe</option>
+        <option value="3">Wipe</option>
+        <option value="4">Twinkle</option>
+        <option value="5">Gradient</option>
+        <option value="6">Theater</option>
+        <option value="7">Cylon</option>
+      </select>
+      <button id="btn-effect-apply" class="primary">Apply</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="panel">
+  <h2>Recent activity</h2>
+  <p class="hint">
+    Live button-press + modifier events from the badge.  Useful while
+    configuring keymaps / F01 modifier-table entries.  Most recent at
+    the top; capped at 50 entries.
+  </p>
+  <pre class="log" id="event-log">(connect to start)</pre>
 </div>
 
 <div class="panel">
@@ -242,7 +307,7 @@
 </footer>
 
 <script type="module">
-import { BadgeAPI, VAULT_SLOTS, BeepPattern } from "./protocol.js";
+import { BadgeAPI, VAULT_SLOTS, TOTP_SLOTS, BeepPattern } from "./protocol.js";
 
 const badge = new BadgeAPI();
 const $ = (sel) => document.querySelector(sel);
@@ -278,7 +343,10 @@ $("#btn-connect").addEventListener("click", async () => {
         await badge.connect();
         setStatus(true);
         log("connected", "ok");
+        eventLines.length = 0;
+        eventLogEl.textContent = "(listening for badge events…)";
         await refreshVault();
+        await refreshTotp();
     } catch (err) {
         log(`connect failed: ${err.message}`, "err");
     }
@@ -452,6 +520,103 @@ $("#btn-beep").addEventListener("click", async () => {
     try { await badge.playBeep(id); log(`played pattern ${id}`); }
     catch (err) { log(`beep: ${err.message}`, "err"); }
 });
+
+// ─── Slider + splash toggles
+$("#cb-slider").addEventListener("change", async (ev) => {
+    try { await badge.setSliderEnabled(ev.target.checked); log(`slider ${ev.target.checked ? "on" : "off"}`); }
+    catch (err) { log(`slider: ${err.message}`, "err"); }
+});
+$("#cb-splash").addEventListener("change", async (ev) => {
+    try { await badge.setSplashOnPress(ev.target.checked); log(`splash ${ev.target.checked ? "on" : "off"}`); }
+    catch (err) { log(`splash: ${err.message}`, "err"); }
+});
+
+// ─── Effect mode picker
+$("#btn-effect-apply").addEventListener("click", async () => {
+    const id = parseInt($("#effect-pick").value, 10);
+    try { await badge.setEffectMode(id); log(`effect mode → ${id}`); }
+    catch (err) { log(`effect: ${err.message}`, "err"); }
+});
+
+// ─── TOTP
+$("#btn-totp-provision").addEventListener("click", async () => {
+    const label  = $("#totp-label").value.trim();
+    const secret = $("#totp-secret").value.trim();
+    if (!label || !secret) { log("provision: label + secret required", "err"); return; }
+    try {
+        await badge.totpProvision(0, label, secret);
+        log(`provisioned slot 0 (label=${label})`, "ok");
+        $("#totp-secret").value = "";  // clear secret from the field after write
+        await refreshTotp();
+    } catch (err) {
+        log(`totp provision: ${err.message}`, "err");
+    }
+});
+
+$("#btn-totp-fire").addEventListener("click", async () => {
+    const btn = $("#btn-totp-fire");
+    const original = btn.textContent;
+    btn.disabled = true;
+    try {
+        for (let i = 3; i > 0; i--) {
+            btn.textContent = `Firing in ${i}…`;
+            log(`firing TOTP in ${i}s — switch focus to your target window`);
+            await new Promise((r) => setTimeout(r, 1000));
+        }
+        btn.textContent = "Syncing + firing…";
+        await badge.totpSyncTime();
+        await new Promise((r) => setTimeout(r, 50));
+        await badge.totpFire(0);
+        await new Promise((r) => setTimeout(r, 500));
+        log("TOTP fired", "ok");
+    } catch (err) {
+        log(`totp fire: ${err.message}`, "err");
+    } finally {
+        btn.textContent = original;
+        btn.disabled = false;
+    }
+});
+
+$("#btn-totp-refresh").addEventListener("click", refreshTotp);
+
+async function refreshTotp() {
+    if (!badge.connected) return;
+    try {
+        const entries = await badge.totpList(1000);
+        const display = $("#totp-list-display");
+        if (entries.length === 0) {
+            display.textContent = "(no reply from badge)";
+            return;
+        }
+        const lines = entries.map(({ slot, label }) => {
+            const clean = String.fromCharCode(...label).replace(/[\x00\xff]+$/g, "");
+            return clean
+                ? `slot ${slot}: label="${clean}"`
+                : `slot ${slot}: empty (never provisioned)`;
+        });
+        display.textContent = lines.join("\n");
+    } catch (err) {
+        log(`totp list: ${err.message}`, "err");
+    }
+}
+
+// ─── Live event log
+const eventLogEl = $("#event-log");
+const eventLines = [];
+function pushEvent(text) {
+    const ts = new Date().toTimeString().slice(0, 8);
+    eventLines.unshift(`[${ts}] ${text}`);
+    while (eventLines.length > 50) eventLines.pop();
+    eventLogEl.textContent = eventLines.join("\n");
+}
+badge.onButton = (btn, mod, kc) =>
+    pushEvent(`button ${btn} pressed  (mod=0x${mod.toString(16).padStart(2,"0")} kc=0x${kc.toString(16).padStart(2,"0")})`);
+badge.onButtonExt = (kind, btn_a, btn_b) =>
+    pushEvent(`${kind} ${btn_b ? `${btn_a}+${btn_b}` : `btn=${btn_a}`}`);
+badge.onChord = (n) => pushEvent(`4-button chord ${n === 2 ? "(long)" : "(short)"}`);
+badge.onEffect = (m) => pushEvent(`effect mode → ${m}`);
+badge.onKeyAck = (n) => pushEvent(`keymap write ack: btn ${n}`);
+badge.onKeyReply = (n, m, k) => pushEvent(`keymap reply: btn ${n}  mod=0x${m.toString(16).padStart(2,"0")} kc=0x${k.toString(16).padStart(2,"0")})`);
 
 // ─── Self-check on load
 if (!('serial' in navigator)) {

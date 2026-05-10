@@ -37,6 +37,25 @@ export const VAULT_SLOTS     = 2;
 export const VAULT_MAX_PAIRS = 16;
 export const MAX_BURST_PAIRS = 256;
 
+export const TOTP_SLOTS      = 1;
+export const TOTP_LABEL_LEN  = 4;
+export const TOTP_KEY_LEN    = 20;
+
+// Firmware effect mode IDs (matches dc29.protocol.EffectMode for the
+// shipped 0..7 set).
+export const EffectMode = {
+    OFF:           0,
+    RAINBOW_CHASE: 1,
+    BREATHE:       2,
+    WIPE:          3,
+    TWINKLE:       4,
+    GRADIENT:      5,
+    THEATER:       6,
+    CYLON:         7,
+};
+
+export const CMD_TOTP        = 'o'.charCodeAt(0);
+
 export const BeepPattern = {
     SILENCE:        0,
     CONFIRM:        1,
@@ -91,6 +110,30 @@ export function textToHidPairs(text) {
 }
 
 
+// ─── Base32 decode (RFC 4648).  Lenient: strips whitespace + dashes,
+// uppercases, pads to a multiple of 8.  Returns Uint8Array.
+const _B32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+export function base32Decode(s) {
+    const cleaned = s.replace(/[\s-]/g, "").toUpperCase().replace(/=+$/, "");
+    if (!cleaned) return new Uint8Array(0);
+    let bits = 0;
+    let value = 0;
+    const out = [];
+    for (const ch of cleaned) {
+        const v = _B32_ALPHABET.indexOf(ch);
+        if (v < 0) throw new Error(`invalid base32 character: ${ch}`);
+        value = (value << 5) | v;
+        bits += 5;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push((value >> bits) & 0xff);
+        }
+    }
+    return new Uint8Array(out);
+}
+
+
 // ─── BadgeAPI — talks to the badge's CDC port via the Web Serial API.
 //
 // Same byte-level protocol as dc29/badge.py.  Keeps a small RX state
@@ -106,13 +149,22 @@ export class BadgeAPI {
         this.writer = null;
         this._rxBuf = [];
         this._readerLoopRunning = false;
-        this._vaultListPending = null; // {entries, expected, resolve, timer}
+        this._vaultListPending = null;  // {entries, expected, resolve, timer}
+        this._totpListPending  = null;  // {entries, expected, resolve, timer}
 
         // RX state machine
         this._rxState = 0;       // 0 = idle, 1 = awaiting cmd, 2 = collecting args
         this._rxCmd = 0;
         this._rxArgs = [];
         this._rxNeed = 0;
+
+        // Public callbacks (assignable from the UI).
+        this.onButton    = null;   // (btn, mod, kc) — EVT_BUTTON 'B'
+        this.onButtonExt = null;   // (kind, btn_a, btn_b|null) — kinds 'double'/'triple'/'long'/'chord'
+        this.onChord     = null;   // (chord_type) — 1=short, 2=long
+        this.onEffect    = null;   // (mode_id) — EVT_EFFECT_MODE 'V'
+        this.onKeyAck    = null;   // (btn) — EVT_KEY_ACK 'A'
+        this.onKeyReply  = null;   // (btn, mod, kc) — EVT_KEY_REPLY 'R'
     }
 
     get connected() {
@@ -167,8 +219,7 @@ export class BadgeAPI {
     }
 
     _processByte(b) {
-        // Mirror of dc29/badge.py _process_rx + _dispatch_rx, scoped to
-        // the events the web app actually consumes (vault list reply).
+        // Mirror of dc29/badge.py _process_rx + _dispatch_rx.
         if (this._rxState === 0) {
             if (b === ESCAPE) { this._rxState = 1; }
             return;
@@ -183,7 +234,7 @@ export class BadgeAPI {
                 [EVT_KEY_ACK]:     1,
                 [EVT_EFFECT_MODE]: 1,
                 [EVT_CHORD]:       1,
-                [EVT_BUTTON_EXT]:  -1,  // special: determined by first arg
+                [EVT_BUTTON_EXT]:  -1,  // special: first arg is kind, expands count
             };
             const need = COUNTS[b];
             if (need === undefined) { this._rxState = 0; return; }
@@ -197,9 +248,10 @@ export class BadgeAPI {
             // Variable-length expansion for EVT_BUTTON_EXT.
             if (this._rxCmd === EVT_BUTTON_EXT && this._rxArgs.length === 1) {
                 const kind = this._rxArgs[0];
-                if (kind === 'V'.charCodeAt(0))                       this._rxNeed = 11;
-                else if (kind === 'C'.charCodeAt(0))                  this._rxNeed = 3;
-                else if ([0x32, 0x33, 0x4C].includes(kind))           this._rxNeed = 2;
+                if      (kind === 'V'.charCodeAt(0))            this._rxNeed = 11; // F07 vault list reply
+                else if (kind === 'O'.charCodeAt(0))            this._rxNeed = 6;  // F09 totp list reply
+                else if (kind === 'C'.charCodeAt(0))            this._rxNeed = 3;  // F02 chord
+                else if ([0x32, 0x33, 0x4C].includes(kind))     this._rxNeed = 2;  // F01 double/triple/long
                 else { this._rxState = 0; return; }
             }
             if (this._rxArgs.length >= this._rxNeed) {
@@ -210,12 +262,37 @@ export class BadgeAPI {
     }
 
     _dispatch() {
-        if (this._rxCmd === EVT_BUTTON_EXT) {
-            const kind = this._rxArgs[0];
+        const cmd  = this._rxCmd;
+        const args = this._rxArgs;
+
+        if (cmd === EVT_BUTTON && args.length === 3) {
+            if (this.onButton) { try { this.onButton(args[0], args[1], args[2]); } catch (e) { console.warn(e); } }
+            return;
+        }
+        if (cmd === EVT_KEY_REPLY && args.length === 3) {
+            if (this.onKeyReply) { try { this.onKeyReply(args[0], args[1], args[2]); } catch (e) { console.warn(e); } }
+            return;
+        }
+        if (cmd === EVT_KEY_ACK && args.length === 1) {
+            if (this.onKeyAck) { try { this.onKeyAck(args[0]); } catch (e) { console.warn(e); } }
+            return;
+        }
+        if (cmd === EVT_EFFECT_MODE && args.length === 1) {
+            if (this.onEffect) { try { this.onEffect(args[0]); } catch (e) { console.warn(e); } }
+            return;
+        }
+        if (cmd === EVT_CHORD && args.length === 1) {
+            if (this.onChord) { try { this.onChord(args[0]); } catch (e) { console.warn(e); } }
+            return;
+        }
+        if (cmd === EVT_BUTTON_EXT) {
+            const kind = args[0];
+
+            // F07 vault list reply.
             if (kind === 'V'.charCodeAt(0) && this._vaultListPending) {
-                const slot   = this._rxArgs[1];
-                const length = this._rxArgs[2];
-                const preview = this._rxArgs.slice(3, 11);
+                const slot    = args[1];
+                const length  = args[2];
+                const preview = args.slice(3, 11);
                 this._vaultListPending.entries.push({ slot, length, preview });
                 if (this._vaultListPending.entries.length >= this._vaultListPending.expected) {
                     clearTimeout(this._vaultListPending.timer);
@@ -225,6 +302,37 @@ export class BadgeAPI {
                     this._vaultListPending = null;
                 }
                 return;
+            }
+
+            // F09 totp list reply.
+            if (kind === 'O'.charCodeAt(0) && this._totpListPending) {
+                const slot  = args[1];
+                const label = args.slice(2, 6);
+                this._totpListPending.entries.push({ slot, label });
+                if (this._totpListPending.entries.length >= this._totpListPending.expected) {
+                    clearTimeout(this._totpListPending.timer);
+                    this._totpListPending.resolve(
+                        this._totpListPending.entries.sort((a, b) => a.slot - b.slot)
+                    );
+                    this._totpListPending = null;
+                }
+                return;
+            }
+
+            // F01/F02 modifier events.
+            if (this.onButtonExt) {
+                const kindMap = {
+                    [0x32]: 'double',
+                    [0x33]: 'triple',
+                    [0x4C]: 'long',
+                    [0x43]: 'chord',
+                };
+                const kindStr = kindMap[kind];
+                if (kindStr) {
+                    const btn_a = args[1];
+                    const btn_b = (kindStr === 'chord' && args.length >= 3) ? args[2] : null;
+                    try { this.onButtonExt(kindStr, btn_a, btn_b); } catch (e) { console.warn(e); }
+                }
             }
         }
     }
@@ -294,6 +402,76 @@ export class BadgeAPI {
 
     async vaultClear(slot) {
         await this._write([ESCAPE, CMD_VAULT, 'C'.charCodeAt(0), slot & 0xff]);
+    }
+
+    async setSliderEnabled(enabled) {
+        await this._write([ESCAPE, CMD_SET_SLIDER, enabled ? 1 : 0]);
+    }
+
+    async setSplashOnPress(enabled) {
+        await this._write([ESCAPE, CMD_SET_SPLASH, enabled ? 1 : 0]);
+    }
+
+    // ─── F09 TOTP ─────────────────────────────────────────────────────
+
+    async totpProvision(slot, label, base32Secret) {
+        if (slot < 0 || slot >= TOTP_SLOTS) {
+            throw new Error(`slot must be 0..${TOTP_SLOTS - 1}, got ${slot}`);
+        }
+        let key = base32Decode(base32Secret);
+        if (key.length < TOTP_KEY_LEN) {
+            // Pad with zeros to TOTP_KEY_LEN.
+            const padded = new Uint8Array(TOTP_KEY_LEN);
+            padded.set(key);
+            key = padded;
+        } else if (key.length > TOTP_KEY_LEN) {
+            key = key.slice(0, TOTP_KEY_LEN);
+        }
+        const lblBytes = new TextEncoder().encode(label).slice(0, TOTP_LABEL_LEN);
+        const lbl = new Uint8Array(TOTP_LABEL_LEN);
+        lbl.set(lblBytes);
+        const buf = [ESCAPE, CMD_TOTP, 'W'.charCodeAt(0), slot & 0xff];
+        for (const b of lbl) buf.push(b);
+        for (const b of key) buf.push(b);
+        await this._write(buf);
+    }
+
+    async totpSyncTime(unixSeconds = null) {
+        const t = unixSeconds === null ? Math.floor(Date.now() / 1000) : Math.floor(unixSeconds);
+        const ts = t >>> 0;
+        await this._write([
+            ESCAPE, CMD_TOTP, 'T'.charCodeAt(0),
+            ts & 0xff, (ts >> 8) & 0xff, (ts >> 16) & 0xff, (ts >> 24) & 0xff,
+        ]);
+    }
+
+    async totpFire(slot) {
+        await this._write([ESCAPE, CMD_TOTP, 'F'.charCodeAt(0), slot & 0xff]);
+    }
+
+    async totpList(timeoutMs = 1000) {
+        return new Promise(async (resolve) => {
+            this._totpListPending = {
+                entries: [],
+                expected: TOTP_SLOTS,
+                resolve,
+                timer: setTimeout(() => {
+                    if (this._totpListPending) {
+                        const entries = this._totpListPending.entries;
+                        this._totpListPending = null;
+                        resolve(entries.sort((a, b) => a.slot - b.slot));
+                    }
+                }, timeoutMs),
+            };
+            try {
+                await this._write([ESCAPE, CMD_TOTP, 'L'.charCodeAt(0)]);
+            } catch (err) {
+                clearTimeout(this._totpListPending.timer);
+                this._totpListPending = null;
+                resolve([]);
+                throw err;
+            }
+        });
     }
 
     async vaultList(timeoutMs = 1000) {
