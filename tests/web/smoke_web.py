@@ -472,6 +472,55 @@ def test_rx_driven_panels(p) -> None:
 
 # ─── Entry point ──────────────────────────────────────────────────────
 
+def test_onboarding_tour(browser) -> None:
+    section("Onboarding tour (first-launch + manual replay)")
+
+    # Fresh context so localStorage starts empty.  Auto-launch should fire.
+    ctx = browser.new_context()
+    page = ctx.new_page()
+    try:
+        page.goto(URL, wait_until="networkidle", timeout=15000)
+        # Tour fires after a 100 ms setTimeout — wait for the backdrop to appear.
+        page.wait_for_selector("#onboard-backdrop", timeout=2000)
+        check("first-visit: tour modal shown automatically", True)
+
+        # Step 1 of N is the welcome step.
+        progress = page.text_content("#onboard-card .progress") or ""
+        check("first step labelled correctly", "Step 1 of" in progress, progress)
+
+        # Click Next a few times.
+        for expected_step in (2, 3):
+            page.click("#onboard-card button[data-action='next']")
+            page.wait_for_function(
+                f"document.querySelector('#onboard-card .progress')?.textContent.includes('Step {expected_step} of')",
+                timeout=2000,
+            )
+        progress = page.text_content("#onboard-card .progress") or ""
+        check("Next advances steps", "Step 3 of" in progress, progress)
+
+        # Skip closes the modal AND sets the localStorage flag.
+        page.click("#onboard-card button[data-action='skip']")
+        page.wait_for_function("!document.querySelector('#onboard-backdrop')", timeout=2000)
+        check("Skip closes modal", True)
+
+        flag = page.evaluate("() => localStorage.getItem('dc29.onboardingShown')")
+        check("Skip persists 'shown' flag in localStorage", flag == "1", repr(flag))
+
+        # Reload — tour should NOT auto-launch (flag is set).
+        page.reload(wait_until="networkidle")
+        page.wait_for_timeout(500)  # allow the 100 ms setTimeout to fire and pass
+        backdrop_present = page.locator("#onboard-backdrop").count()
+        check("subsequent visits don't auto-launch the tour", backdrop_present == 0)
+
+        # "Show me around again" footer link relaunches the tour.
+        page.click("#link-tour")
+        page.wait_for_selector("#onboard-backdrop", timeout=2000)
+        check("'Show me around again' link relaunches tour", True)
+    finally:
+        page.close()
+        ctx.close()
+
+
 def main() -> int:
     print(f"Targeting: {URL}")
     print()
@@ -483,6 +532,7 @@ def main() -> int:
             test_hash_banner(browser)
             test_mocked_serial_protocol(browser)
             test_rx_driven_panels(browser)
+            test_onboarding_tour(browser)
         except Exception as exc:
             print(f"\nFATAL: {type(exc).__name__}: {exc}")
             import traceback; traceback.print_exc()

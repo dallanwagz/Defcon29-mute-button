@@ -431,7 +431,8 @@
 
 <footer>
   Source: <a href="https://github.com/dallanwagz/Defcon29-mute-button">github.com/dallanwagz/Defcon29-mute-button</a>
-  · F11 web config UI
+  · F11 web config UI ·
+  <a href="#" id="link-tour">Show me around again</a>
 </footer>
 
 <script type="module">
@@ -439,6 +440,7 @@ import {
     BadgeAPI, VAULT_SLOTS, VAULT_MAX_PAIRS, TOTP_SLOTS,
     BeepPattern, asciiToHidPair, keyEventToHidPair,
 } from "./protocol.js";
+import { startTour, resetOnboarding } from "./onboarding.js";
 
 const badge = new BadgeAPI();
 const $ = (sel) => document.querySelector(sel);
@@ -1291,6 +1293,17 @@ $("#btn-share-discard").addEventListener("click", () => {
         log(`share: malformed #cfg in URL (${err.message})`, "err");
     }
 })();
+
+
+// ─── Onboarding tour (Phase 1)
+$("#link-tour").addEventListener("click", (ev) => {
+    ev.preventDefault();
+    resetOnboarding();
+    startTour({ force: true });
+});
+// Auto-launch on first visit (uses localStorage flag to suppress).
+// Wait one tick so other panels are mounted before we highlight them.
+setTimeout(() => startTour(), 100);
 
 
 // ─── Self-check on load
