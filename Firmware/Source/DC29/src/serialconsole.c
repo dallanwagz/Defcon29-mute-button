@@ -11,6 +11,7 @@
 #include "wled_fx.h"
 #include "input.h"
 #include "jiggler.h"
+#include "totp.h"
 
 extern bool main_b_cdc_enable;
 
@@ -60,6 +61,11 @@ static uint16_t _burst_recv_count = 0;
 static uint8_t  _vault_w_slot = 0;
 static uint8_t  _vault_w_n_pairs = 0;
 static uint8_t  _vault_w_count = 0;
+
+/* F09 TOTP-write working state. */
+static uint8_t  _totp_w_slot = 0;
+static uint8_t  _totp_w_count = 0;
+#define TOTP_W_PAYLOAD_BYTES (TOTP_LABEL_LEN + TOTP_KEY_LEN)   /* 24 */
 
 extern uint8_t keymaplength;
 extern uint8_t keymap[];
@@ -186,6 +192,13 @@ void updateSerialConsole(void){
 				 * for full payloads we route through _burst_recv_buf.
 				 * First arg is the sub-cmd; expand args_needed once we see it. */
 				if(data == 'v'){ escape_args_needed = 1; escape_state = 2; return; }
+				/* F09 — TOTP.  Variable arg count:
+				 *   'T' <unix_le32:4>                  → 5 args total
+				 *   'F' <slot>                         → 2 args total
+				 *   'L'                                → 1 arg total
+				 *   'W' <slot> <label:4> <key:20>      → 26 args (route via state 7)
+				 * Sub-cmd byte expands args_needed; 'W' transitions to state 7. */
+				if(data == 'o'){ escape_args_needed = 1; escape_state = 2; return; }
 				return;
 			}
 			if(escape_state == 2){
@@ -211,6 +224,15 @@ void updateSerialConsole(void){
 					if(sub == 'L')                 escape_args_needed = 1;  /* done */
 					else if(sub == 'F' || sub == 'C') escape_args_needed = 2;  /* sub + slot */
 					else if(sub == 'W')            escape_args_needed = 3;  /* sub + slot + n_pairs (then payload via state 6) */
+					else { escape_state = 0; return; }
+				}
+				/* Variable-length expansion for F09 TOTP 'o' sub-cmds. */
+				if(escape_cmd == 'o' && escape_args_count == 1){
+					uint8_t sub = escape_args[0];
+					if(sub == 'L')      escape_args_needed = 1;   /* done */
+					else if(sub == 'F') escape_args_needed = 2;   /* sub + slot */
+					else if(sub == 'T') escape_args_needed = 5;   /* sub + 4 LE bytes */
+					else if(sub == 'W') escape_args_needed = 2;   /* sub + slot, then route to state 7 */
 					else { escape_state = 0; return; }
 				}
 				if(escape_args_count < escape_args_needed) return;
@@ -327,6 +349,37 @@ void updateSerialConsole(void){
 						escape_state = 6;
 						return;
 					}
+				} else if(escape_cmd == 'o'){
+					/* F09 — TOTP. */
+					uint8_t sub = escape_args[0];
+					if(sub == 'T'){
+						totp_wall_clock_unix = (uint32_t)escape_args[1]
+						                     | ((uint32_t)escape_args[2] << 8)
+						                     | ((uint32_t)escape_args[3] << 16)
+						                     | ((uint32_t)escape_args[4] << 24);
+					} else if(sub == 'F'){
+						totp_fire(escape_args[1]);
+					} else if(sub == 'L'){
+						/* List reply: 0x01 'b' 'O' <slot> <label[4]> = 8 bytes per slot. */
+						if(main_b_cdc_enable){
+							for(uint8_t s = 0; s < TOTP_SLOTS; s++){
+								uint8_t lbl[TOTP_LABEL_LEN] = {0,0,0,0};
+								totp_read_label(s, lbl);
+								uint8_t reply[8] = {
+									0x01, 'b', 'O', s,
+									lbl[0], lbl[1], lbl[2], lbl[3],
+								};
+								udi_cdc_write_buf(reply, sizeof(reply));
+							}
+						}
+					} else if(sub == 'W'){
+						/* sub + slot received; transition to state 7 to collect
+						 * label[4] + key[20] = 24 bytes of payload. */
+						_totp_w_slot  = escape_args[1];
+						_totp_w_count = 0;
+						escape_state  = 7;
+						return;
+					}
 				} else if(escape_cmd == 'j'){
 					/* F08a-lite — Stay Awake jiggler. */
 					uint8_t sub = escape_args[0];
@@ -379,6 +432,18 @@ void updateSerialConsole(void){
 				_burst_recv_buf[_vault_w_count++] = (uint8_t)data;
 				if(_vault_w_count >= (uint16_t)(_vault_w_n_pairs * 2)){
 					vault_write(_vault_w_slot, _burst_recv_buf, _vault_w_n_pairs);
+					escape_state = 0;
+				}
+				return;
+			}
+			/* F09 TOTP-write payload — collect TOTP_LABEL_LEN + TOTP_KEY_LEN
+			 * bytes (24 total) then commit. */
+			if(escape_state == 7){
+				_burst_recv_buf[_totp_w_count++] = (uint8_t)data;
+				if(_totp_w_count >= TOTP_W_PAYLOAD_BYTES){
+					totp_provision(_totp_w_slot,
+					               _burst_recv_buf,                     /* label[4] */
+					               _burst_recv_buf + TOTP_LABEL_LEN);   /* key[20]  */
 					escape_state = 0;
 				}
 				return;

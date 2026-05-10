@@ -1202,6 +1202,158 @@ def spotify_status() -> None:
 
 
 # ---------------------------------------------------------------------------
+# totp subcommand group — F09 RFC 6238 TOTP token
+# ---------------------------------------------------------------------------
+
+totp_app = typer.Typer(
+    help=(
+        "Provision and fire RFC 6238 TOTP codes from the badge.  One slot, "
+        "20-byte raw key + 4-char label.  Codes are 6 digits, 30-second "
+        "window.  Fire = type the current code into the focused window via "
+        "the F06 HID-burst path.\n\n"
+        "WARNING: TOTP secrets are stored in *plaintext* EEPROM and can be "
+        "dumped via UF2.  Use only for low-stakes accounts or demos."
+    ),
+)
+app.add_typer(totp_app, name="totp")
+
+
+@totp_app.command("provision")
+def totp_provision_cmd(
+    slot: int = typer.Argument(0, help="Slot number (only 0 supported in v3 EEPROM layout)."),
+    label: str = typer.Option(..., "--label", "-l", help="Short label, max 4 chars."),
+    secret: str = typer.Option(..., "--secret", "-s",
+        help="Base32-encoded TOTP secret (e.g. JBSWY3DPEHPK3PXP).  Whitespace and dashes are stripped."),
+    port: Optional[str] = typer.Option(None, "--port", "-p", envvar="DC29_PORT"),
+) -> None:
+    """Provision a TOTP slot.  Decodes the base32 secret host-side and pushes
+    the raw 20-byte key to the badge."""
+    from dc29.badge import BadgeAPI
+    from dc29.protocol import TOTP_KEY_LEN, TOTP_LABEL_LEN, TOTP_SLOTS
+    from dc29.totp_test import base32_decode
+
+    if not (0 <= slot < TOTP_SLOTS):
+        typer.echo(f"slot must be 0..{TOTP_SLOTS - 1}", err=True)
+        raise typer.Exit(2)
+
+    try:
+        raw = base32_decode(secret)
+    except Exception as exc:
+        typer.echo(f"could not decode --secret as base32: {exc}", err=True)
+        raise typer.Exit(2)
+
+    # Pad / truncate to TOTP_KEY_LEN.  Most consumer TOTP secrets decode
+    # to 10–32 bytes; SHA-1 HMAC operates on whatever length you hand it,
+    # but the firmware fixed-width slot expects exactly 20 bytes (matches
+    # the SHA-1 block-aligned key length used by RFC 6238 §A.2).
+    if len(raw) < TOTP_KEY_LEN:
+        raw = raw.ljust(TOTP_KEY_LEN, b"\x00")
+    elif len(raw) > TOTP_KEY_LEN:
+        raw = raw[:TOTP_KEY_LEN]
+        typer.echo(
+            f"note: secret was {len(raw)} bytes after base32 decode; truncated to "
+            f"{TOTP_KEY_LEN}.  RFC 6238 §A.2 reference uses 20-byte keys.",
+            err=True,
+        )
+
+    if len(label) > TOTP_LABEL_LEN:
+        typer.echo(f"label truncated to {TOTP_LABEL_LEN} chars", err=True)
+        label = label[:TOTP_LABEL_LEN]
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+    try:
+        import time as _t
+        for _ in range(20):
+            if badge.connected: break
+            _t.sleep(0.1)
+        if not badge.connected:
+            typer.echo("Could not connect to badge.", err=True)
+            raise typer.Exit(1)
+        badge.totp_provision(slot, label, raw)
+        _t.sleep(0.2)
+    finally:
+        badge.close()
+    typer.echo(f"Provisioned slot {slot} with label '{label}' (key: {len(raw)} bytes).")
+
+
+@totp_app.command("fire")
+def totp_fire_cmd(
+    slot: int = typer.Argument(0),
+    delay: float = typer.Option(3.0, "--delay", "-d",
+        help="Seconds to wait before firing (so you can switch focus to the target window)."),
+    port: Optional[str] = typer.Option(None, "--port", "-p", envvar="DC29_PORT"),
+) -> None:
+    """Sync the badge clock and fire — types the current 6-digit code into the focused window.
+
+    Always re-syncs the badge clock from the host *immediately* before firing
+    (badge clock is RAM-only, so the bridge owns time).
+    """
+    from dc29.badge import BadgeAPI
+    from dc29.protocol import TOTP_SLOTS
+
+    if not (0 <= slot < TOTP_SLOTS):
+        typer.echo(f"slot must be 0..{TOTP_SLOTS - 1}", err=True)
+        raise typer.Exit(2)
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+    try:
+        import time as _t
+        for _ in range(20):
+            if badge.connected: break
+            _t.sleep(0.1)
+        if not badge.connected:
+            typer.echo("Could not connect to badge.", err=True)
+            raise typer.Exit(1)
+
+        if delay > 0:
+            for s in range(int(delay), 0, -1):
+                typer.echo(f"firing slot {slot} in {s} s — switch focus to your target window")
+                _t.sleep(1.0)
+
+        badge.totp_sync_time()
+        _t.sleep(0.05)
+        badge.totp_fire(slot)
+        _t.sleep(0.5)   # allow burst to complete before closing port
+    finally:
+        badge.close()
+    typer.echo(f"Fired slot {slot}.")
+
+
+@totp_app.command("list")
+def totp_list_cmd(
+    port: Optional[str] = typer.Option(None, "--port", "-p", envvar="DC29_PORT"),
+) -> None:
+    """List provisioned TOTP slots (label only — never echoes the key)."""
+    from dc29.badge import BadgeAPI
+
+    resolved_port = _resolve_port(port)
+    badge = BadgeAPI(resolved_port)
+    try:
+        import time as _t
+        for _ in range(20):
+            if badge.connected: break
+            _t.sleep(0.1)
+        if not badge.connected:
+            typer.echo("Could not connect to badge.", err=True)
+            raise typer.Exit(1)
+        entries = badge.totp_list(timeout=1.0)
+    finally:
+        badge.close()
+    if not entries:
+        typer.echo("No reply from badge (timeout).")
+        return
+    for slot, label in entries:
+        # Strip trailing zero / 0xFF padding for a friendly display.
+        clean = label.rstrip(b"\x00\xff").decode("ascii", errors="replace")
+        if not clean:
+            typer.echo(f"  slot {slot}: empty (never provisioned)")
+        else:
+            typer.echo(f"  slot {slot}: label='{clean}'  (raw bytes: {label.hex()})")
+
+
+# ---------------------------------------------------------------------------
 # vault subcommand group — F07 rubber-ducky vault
 # ---------------------------------------------------------------------------
 

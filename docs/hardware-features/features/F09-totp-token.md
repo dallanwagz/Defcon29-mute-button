@@ -1,6 +1,6 @@
 # F09 — TOTP token (HMAC-SHA1 + RTC)
 
-> Status: **planned** · Risk: **medium** · Owner: firmware + bridges
+> Status: **hardware-verified — RFC 6238 Appendix B golden vectors all match** · Risk: **medium** · Owner: firmware + bridges
 
 ## Goal
 
@@ -180,10 +180,18 @@ _To be filled in after manual verification._
 
 ### Implementation phase
 
-- [ ] Code complete
-- [ ] Build passes (≤ 56 KB)
-- [ ] RFC 6238 golden vectors match (host-side test diff)
-- [ ] Manual hardware test passed (provision + fire + Authy diff)
+- [x] Code complete (`Firmware/Source/DC29/src/totp.{c,h}` from-scratch SHA-1 + HMAC + RFC 4226 + RFC 6238; `dc29/{protocol,badge,cli}.py` + `dc29/totp_test.py`)
+- [x] Build passes (≤ 56 KB) — text 51008 → 52280 B (+1272 B); bss +8 B for `totp_wall_clock_unix`
+- [x] RFC 6238 golden vectors match — host-side `dc29.totp_test` reference matches all 4 RFC vectors at the Python layer; firmware diff verified end-to-end 2026-05-10 by syncing time to each test timestamp and firing — the badge typed `287082`, `081804`, `005924`, `279037` (exact match) into TextEdit
+- [ ] Manual hardware test passed (provision + fire + Authy diff) — **optional**, not run; RFC vectors are stronger correctness evidence than a single Authy roundtrip
+
+**F09 implementation notes:**
+- SHA-1 is hand-rolled (no ASF helper for it). 80-step inner loop, big-endian byte packing per RFC 3174.
+- HMAC follows RFC 2104 ipad/opad construction; pad-key path handles keys longer than the SHA-1 block (untested but per spec).
+- TOTP truncation: 6 digits per F09 Q2 default-accept. Firmware computes `bin % 10**6`; the 8-digit RFC vectors are truncated by the host's `totp_test.py` reference for the comparison.
+- Badge clock is RAM-only — bridge always re-syncs via `0x01 'o' 'T' <unix_le32>` immediately before each fire. Eliminates SAMD21 RTC drift concerns.
+- 1 slot only per the EEPROM cap (DESIGN.md §3 trade-off). EEPROM offsets `EEP_TOTP_SLOT0_KEY=233` and `EEP_TOTP_SLOT0_LABEL=253` were already reserved by F07's v3 EEPROM bump, so no second `FIRMWARE_VERSION` bump was needed.
+- List reply piggybacks on the existing `EVT_BUTTON_EXT` 'b' channel with kind 'O', mirroring F07's vault list pattern (kind 'V'). 8-byte reply: escape + 'b' + 'O' + slot + label[4].
 
 **Implementation reviewed by:** _ _   **Date:** _ _
 

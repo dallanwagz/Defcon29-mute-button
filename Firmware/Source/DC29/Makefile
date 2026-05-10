@@ -177,6 +177,7 @@ SRCS := \
     $(SRCROOT)/pwm.c \
     $(SRCROOT)/qtouch/touch.c \
     $(SRCROOT)/serialconsole.c \
+    $(SRCROOT)/totp.c \
     $(SRCROOT)/wled_fx.c
 
 # Derive object file paths (preserving source subdirectory structure in build/)

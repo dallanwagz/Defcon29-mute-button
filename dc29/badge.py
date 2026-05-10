@@ -48,8 +48,12 @@ from dc29.protocol import (
     CMD_HID_BURST,
     CMD_JIGGLER,
     CMD_MOD_TABLE,
+    CMD_TOTP,
     CMD_VAULT,
     MAX_BURST_PAIRS,
+    TOTP_KEY_LEN,
+    TOTP_LABEL_LEN,
+    TOTP_SLOTS,
     VAULT_MAX_PAIRS,
     VAULT_SLOTS,
     CMD_SET_KEY,
@@ -248,6 +252,10 @@ class BadgeAPI:
         # F07 vault list reply.  Fired once per slot in response to vault_list().
         # Args: (slot: int, length: int, preview: bytes (8 bytes, zero-padded)).
         self.on_vault_list_entry: Optional[Callable[[int, int, bytes], None]] = None
+
+        # F09 TOTP list reply.  Fired once per slot in response to totp_list().
+        # Args: (slot: int, label: bytes (4 bytes, zero-padded)).
+        self.on_totp_list_entry: Optional[Callable[[int, bytes], None]] = None
         """Called when a button chord fires: ``(chord_type,)`` where 1=short, 2=long."""
 
         self.on_connect: Optional[Callable[[], None]] = None
@@ -555,6 +563,80 @@ class BadgeAPI:
         """
         cmd = bytes([ESCAPE, CMD_HAPTIC_CLICK, 1 if enabled else 0])
         self._write(cmd)
+
+    def totp_provision(self, slot: int, label: str, key: bytes) -> None:
+        """Write a F09 TOTP secret to the badge.
+
+        Args:
+            slot:  0..TOTP_SLOTS-1.
+            label: Short label.  Truncated to TOTP_LABEL_LEN (4) ASCII bytes;
+                shorter labels are zero-padded.
+            key:   Raw 20-byte SHA-1-block-aligned key.  Caller is responsible
+                for base32-decoding (and padding to exactly 20 bytes).
+
+        Persisted to EEPROM; survives reboots.  Plaintext storage —
+        never use for high-stakes accounts.
+        """
+        if not (0 <= int(slot) < TOTP_SLOTS):
+            raise ValueError(f"slot must be 0..{TOTP_SLOTS - 1}, got {slot}")
+        if len(key) != TOTP_KEY_LEN:
+            raise ValueError(f"key must be exactly {TOTP_KEY_LEN} bytes, got {len(key)}")
+        lbl = label.encode("ascii", errors="replace")[:TOTP_LABEL_LEN]
+        lbl = lbl.ljust(TOTP_LABEL_LEN, b"\x00")
+        buf = bytearray([ESCAPE, CMD_TOTP, ord("W"), int(slot) & 0xFF])
+        buf.extend(lbl)
+        buf.extend(key)
+        self._write(bytes(buf))
+
+    def totp_sync_time(self, unix_seconds: Optional[int] = None) -> None:
+        """Push the host's UTC clock to the badge so the next totp_fire is
+        computed against a freshly-synced timestamp.
+
+        Args:
+            unix_seconds: Override timestamp (for golden-vector tests).
+                Defaults to ``int(time.time())``.
+        """
+        import time as _t
+        ts = int(_t.time()) if unix_seconds is None else int(unix_seconds)
+        ts &= 0xFFFFFFFF
+        self._write(bytes([
+            ESCAPE, CMD_TOTP, ord("T"),
+            ts & 0xFF, (ts >> 8) & 0xFF, (ts >> 16) & 0xFF, (ts >> 24) & 0xFF,
+        ]))
+
+    def totp_fire(self, slot: int) -> None:
+        """Type the current 6-digit TOTP for *slot* into the focused window.
+
+        Caller is responsible for syncing time first via
+        :meth:`totp_sync_time` (the CLI does this automatically).
+        """
+        if not (0 <= int(slot) < TOTP_SLOTS):
+            raise ValueError(f"slot must be 0..{TOTP_SLOTS - 1}, got {slot}")
+        self._write(bytes([ESCAPE, CMD_TOTP, ord("F"), int(slot) & 0xFF]))
+
+    def totp_list(self, timeout: float = 0.5) -> "list[tuple[int, bytes]]":
+        """Return ``[(slot, label_bytes), ...]`` sorted by slot.
+
+        ``label_bytes`` is exactly TOTP_LABEL_LEN (4) bytes, zero-padded.
+        Never returns the key — by design.
+        """
+        import threading
+        result: list[tuple[int, bytes]] = []
+        done = threading.Event()
+        prev_cb = self.on_totp_list_entry
+
+        def collect(slot: int, label: bytes) -> None:
+            result.append((slot, label))
+            if len(result) >= TOTP_SLOTS:
+                done.set()
+
+        self.on_totp_list_entry = collect
+        try:
+            self._write(bytes([ESCAPE, CMD_TOTP, ord("L")]))
+            done.wait(timeout)
+        finally:
+            self.on_totp_list_entry = prev_cb
+        return sorted(result)
 
     def vault_write(self, slot: int, pairs) -> None:
         """Write *pairs* to F07 vault *slot* (0..VAULT_SLOTS-1).
@@ -1000,6 +1082,9 @@ class BadgeAPI:
                 elif kind == ord('V'):
                     # F07 vault list reply: kind + slot + len + 8 preview = 11 bytes
                     self._rx_args_needed = 11
+                elif kind == ord('O'):
+                    # F09 TOTP list reply: kind + slot + 4-byte label = 6 bytes
+                    self._rx_args_needed = 6
                 else:
                     self._rx_state = 0          # unknown kind — drop
                     return
@@ -1088,6 +1173,15 @@ class BadgeAPI:
                         self.on_vault_list_entry(slot, length, preview)
                     except Exception:
                         log.exception("on_vault_list_entry callback raised")
+                return
+            if kind_byte == ord('O') and len(args) == 6:
+                slot  = args[1]
+                label = bytes(args[2:6])
+                if self.on_totp_list_entry is not None:
+                    try:
+                        self.on_totp_list_entry(slot, label)
+                    except Exception:
+                        log.exception("on_totp_list_entry callback raised")
                 return
             kind_map = {ord('2'): 'double', ord('3'): 'triple', ord('L'): 'long', ord('C'): 'chord'}
             kind = kind_map.get(kind_byte)

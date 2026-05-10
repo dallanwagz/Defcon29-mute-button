@@ -203,6 +203,40 @@ gone — the haptic click fills that gap.
 RAM-only; default returns to enabled on every reboot.
 """
 
+CMD_TOTP: int = ord("o")
+"""
+``0x01 'o' <sub> ...`` — F09 TOTP token (RFC 6238, 6-digit, 30-s window).
+
+One EEPROM-resident slot (post-F07 v3 layout reservation).  Stores a
+20-byte raw key (after host-side base32 decode) + 4-char short label.
+The badge clock is RAM-only; the host pushes wall-clock via ``'T'``
+immediately before every ``'F'`` so we never trust the SAMD21 RTC for
+more than the 30-second TOTP window.
+
+**Security**: same caveat as the F07 vault — keys are stored in
+plaintext EEPROM and dumpable via UF2.  Use only for low-stakes
+accounts or demos; not a real hardware-token replacement.
+
+Sub-commands:
+
+* ``'o' 'W' <slot> <label[4]> <key[20]>`` — provision a slot.  Label
+  is 4 ASCII bytes (host pads / truncates as it sees fit).  Key is
+  the raw post-base32 SHA-1-block-aligned 20-byte secret.
+* ``'o' 'T' <unix_le32:4>`` — set the badge wall-clock to *unix*
+  UTC seconds.
+* ``'o' 'F' <slot>`` — compute the current 6-digit code at
+  ``totp_wall_clock_unix`` and type it via the F06 hid_burst path.
+  No-op (silent) if the clock has never been set or the slot was
+  never provisioned.
+* ``'o' 'L'`` — list slots.  Replies with one
+  ``0x01 'b' 'O' <slot> <label[4]>`` per slot.  **Never returns the
+  key bytes** — by design, label is the only off-badge surface.
+"""
+
+TOTP_SLOTS:     int = 1
+TOTP_LABEL_LEN: int = 4
+TOTP_KEY_LEN:   int = 20
+
 CMD_VAULT: int = ord("v")
 """
 ``0x01 'v' <sub> ...`` — F07 rubber-ducky vault.
