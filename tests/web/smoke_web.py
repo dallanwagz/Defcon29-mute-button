@@ -130,9 +130,20 @@ def section(title: str) -> None:
     print(f"━━ {title} ━━")
 
 
+# Init script suppressing the onboarding tour — every test except
+# test_onboarding_tour itself uses this so the modal doesn't intercept
+# clicks on other panels.
+SUPPRESS_ONBOARDING = "localStorage.setItem('dc29.onboardingShown', '1');"
+
+
 @contextmanager
-def page_with_console_capture(browser) -> Iterator[Page]:
-    page = browser.new_page()
+def page_with_console_capture(browser, *, suppress_onboarding=True) -> Iterator[Page]:
+    ctx = browser.new_context()
+    page = ctx.new_page()
+    if suppress_onboarding:
+        page.add_init_script(SUPPRESS_ONBOARDING)
+    # Also re-store the close hook so we can tear down the context too.
+    page._dc29_ctx = ctx  # type: ignore[attr-defined]
     page.console_errors: list[str] = []  # type: ignore[attr-defined]
 
     def on_console(msg: ConsoleMessage) -> None:
@@ -146,6 +157,7 @@ def page_with_console_capture(browser) -> Iterator[Page]:
     page.on("pageerror", on_pageerror)
     yield page
     page.close()
+    ctx.close()
 
 
 # ─── The actual tests ─────────────────────────────────────────────────
