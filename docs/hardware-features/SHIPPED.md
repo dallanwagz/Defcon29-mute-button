@@ -75,7 +75,8 @@ that touches `web/dc29-config/**`).
 | Item | Status |
 |---|---|
 | F05 music-driven smoke test | Pending user-side: needs the macOS Sound output set to a Multi-Output Device that includes BlackHole.  Once that's working, `dc29 start --enable beat-buzzer` should just play. |
-| F11 web — F01/F02 EXT event types in activity log | Pending: need to register sentinel modifier mappings via `tools/test_input_modifiers.py` (or a future web "Modifiers" tab) before double/triple/long/chord events will fire.  The RX dispatch path is wired and tested for `EVT_BUTTON`; F01/F02 EXT event rendering just hasn't been exercised on hardware. |
+| F11 web — F01/F02 EXT event types in activity log | **Resolved by Tier 3.1** (web modifier-table editor lets the user register mappings without `tools/test_input_modifiers.py`).  End-to-end test still pending — see Tier 3 row below. |
+| F11 web — Tier 3 ports (modifier-table editor, shareable URLs, macro recorder) | **Shipped, not yet tested on hardware.**  Code reviewed by eye, JS parsed cleanly, GH Pages deploy succeeded.  User test deferred 2026-05-10 (end of session).  Test plan in commit `5d1c3ed` message. |
 | Cross-platform F10 testing (Windows / Linux) | Not run.  bcdDevice rotation is in place per spec, so Windows should re-enumerate fresh on first plug-in per mode — but this remains untested. |
 | F10 Mode 2 (HID-Kbd + HID-Mouse) | Reserved.  Adding HID-Mouse is its own descriptor-surgery task; would also retroactively give F08 a path-1 option. |
 | `dc29 mode` CLI | Out of scope for F10 v1.  Could be added later by parsing `system_profiler` output. |
