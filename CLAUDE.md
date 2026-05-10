@@ -121,6 +121,48 @@ dc29 autostart install    # Install launchd agent for login autostart
 
 **FocusBridge scaling:** All focus-detecting bridges share a single osascript call via a TTL cache (`_get_active_app()` in `bridges/focus.py`). Without this, 15+ concurrent calls flood macOS System Events and all time out. Do not revert this cache.
 
+## Web config UI (`web/dc29-config/`) — Playwright validation is REQUIRED
+
+The browser config UI lives at `web/dc29-config/index.html` + `protocol.js`, deploys to GitHub Pages via `.github/workflows/pages.yml`, and talks to the badge via the WebSerial API.  Live URL: `https://dallanwagz.github.io/Defcon29-mute-button/`.
+
+**Hard rule:** any time you change `web/dc29-config/**` you MUST run the Playwright smoke suite and report the pass/fail line BEFORE telling the user the change is done.  The user has been bitten by silently-broken UI changes — visual review at the source level is not enough.
+
+### How to validate
+
+```bash
+.venv/bin/python tests/web/smoke_web.py
+```
+
+Expects `PASS: 43    FAIL: 0` (or higher counts as the suite grows — the only acceptable result is `FAIL: 0`).  The suite hits the live deployed URL, so:
+
+1. Wait ~30 s after pushing for GitHub Actions to redeploy before running it.  Check the deploy status at https://github.com/dallanwagz/Defcon29-mute-button/actions if a run feels off.
+2. If the suite fails, fix the JS / HTML, push, wait for redeploy, re-run — repeat until green.  Do NOT report the change as complete with failing assertions.
+
+### What the suite covers
+
+- **Static**: page loads, every panel's `<h2>` renders, no JS console errors during load, Connect button enabled.
+- **Pure JS helpers**: `base32Decode` against the well-known "Hello!" vector, `asciiToHidPair` across lower/upper/shifted/newline cases, `keyEventToHidPair` for modifier+key combos.
+- **Hash-based config banner**: navigating to `?#cfg=…` decodes JSON and surfaces the share-banner.
+- **Mocked `navigator.serial` → protocol byte assertions**: the suite injects a fake serial port via `add_init_script`, captures every byte the page would write, and asserts exact-byte protocol encoding for each action button (LED color, effect mode, beep pattern, jiggler pulse/start/cancel, haptic toggle, slider toggle, WLED knobs, vault clear + chained refresh, modifier-table clear).
+- **RX-driven UI**: emit synthetic `0x01 'b' 'V' …` and `0x01 'B' …` bytes through the mock port → vault / activity-log panels populate.
+
+### What the suite does NOT cover
+
+- Real WebSerial against an attached badge (Chrome's port-picker is OS-level UI and Playwright can't reliably click through it).
+- macOS HID injection from `vault fire` / `totp fire` (those keystrokes go to Playwright's headless Chromium, not a visible window).
+
+For those, the user has to test in real Chrome with the badge attached.  When you ship a UI change that touches a fire-into-focused-window flow (vault, totp, hid burst, type-any-string), explicitly call out in your "what to test" message that the user needs to do the in-Chrome step.
+
+### Adding new assertions when you add a new panel / button
+
+When you add a new UI surface, extend `tests/web/smoke_web.py`:
+
+1. If the panel has a heading: add the heading text to `expected_panels` in `test_static_render`.
+2. If the panel has buttons that send protocol bytes: add a section to `test_mocked_serial_protocol` that clicks the button and asserts the exact byte sequence (pattern: `reset_tx() → page.click(...) → page.wait_for_function("window.__mockTx.length > 0", ...) → check(...)`).
+3. If the panel reads RX events from the badge: extend `test_rx_driven_panels` with a `page.evaluate("() => window.__mockEmitRx([...])")` and assert the resulting DOM update.
+
+Re-run the suite after every change.  Goal is full byte-level coverage of every UI → protocol path, since real-badge testing happens manually one-shot.
+
 ## Audio-reactive bridge setup
 
 The `audio-reactive` bridge captures system audio via [BlackHole](https://github.com/ExistentialAudio/BlackHole) (free MIT-licensed virtual loopback driver), runs FFT + beat detection in Python, and drives the badge LEDs at 60 fps. One-time setup on macOS:
