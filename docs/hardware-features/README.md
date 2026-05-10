@@ -32,19 +32,21 @@ Read [`DESIGN.md`](DESIGN.md) before any feature's code lands. It captures decis
 
 | ID  | Feature                                         | Status      | Risk   | Sign-off |
 |-----|-------------------------------------------------|-------------|--------|----------|
-| F01 | [Tap-count + long-press modifiers](features/F01-tap-count-long-press.md)         | planned     | low    | —        |
-| F02 | [Chord shortcuts](features/F02-chords.md)                                        | planned     | low    | —        |
-| F03 | [Haptic confirmation (buzzer)](features/F03-haptic-confirmation.md)              | planned     | low    | —        |
-| F04 | [Beep signatures per event](features/F04-beep-signatures.md)                     | planned     | low    | —        |
-| F05 | [Beat-doubler (audio→buzzer)](features/F05-beat-doubler.md)                      | planned     | low    | —        |
-| F06 | [Hyper-fast HID burst](features/F06-hid-burst.md)                                | planned     | low    | —        |
-| F07 | [Rubber-ducky vault](features/F07-rubber-ducky-vault.md)                         | planned     | medium | —        |
-| F08 | [Stay Awake (Amphetamine-style jiggler + TUI)](features/F08-mouse-jiggler.md)    | planned     | medium | —        |
-| F09 | [TOTP token](features/F09-totp-token.md)                                         | planned     | medium | —        |
-| F10 | [HID class switch at plug-in](features/F10-hid-class-switch.md)                  | planned     | high   | —        |
-| F11 | [WebUSB config UI](features/F11-webusb-config-ui.md)                             | planned     | high   | —        |
+| F01 | [Tap-count + long-press modifiers](features/F01-tap-count-long-press.md)         | **verified** | low    | 2026-05-09 |
+| F02 | [Chord shortcuts](features/F02-chords.md)                                        | **verified** | low    | 2026-05-09 |
+| F03 | [Haptic confirmation (buzzer)](features/F03-haptic-confirmation.md)              | **verified** | low    | 2026-05-09 |
+| F04 | [Beep signatures per event](features/F04-beep-signatures.md)                     | **verified** | low    | 2026-05-09 |
+| F05 | [Beat-doubler (audio→buzzer)](features/F05-beat-doubler.md)                      | **verified** (synthetic; music sync deferred — BlackHole routing) | low    | 2026-05-09 |
+| F06 | [Hyper-fast HID burst](features/F06-hid-burst.md)                                | **verified** | low    | 2026-05-09 |
+| F07 | [Rubber-ducky vault](features/F07-rubber-ducky-vault.md)                         | **verified** | medium | 2026-05-09 |
+| F08 | [Stay Awake (Amphetamine-style jiggler + TUI)](features/F08-mouse-jiggler.md)    | **verified** (path-2-lite — keyboard wake instead of HID-Mouse; full TUI walkthrough done) | medium | 2026-05-10 |
+| F09 | [TOTP token](features/F09-totp-token.md)                                         | **verified** (RFC 6238 Appendix B golden vectors all match byte-perfect) | medium | 2026-05-10 |
+| F10 | [HID class switch at plug-in](features/F10-hid-class-switch.md)                  | **verified** (single-button-hold variant; Mode 2 reserved for future HID-Mouse) | high   | 2026-05-10 |
+| F11 | [Browser config UI](features/F11-webusb-config-ui.md)                            | **verified** (WebSerial-only; WebUSB descriptors reverted) | high   | 2026-05-10 |
 
 Status values: `planned` → `in-progress` → `built` → `flashed` → `verified` → `signed-off`.
+
+**🎉 All 11 features verified end-to-end on hardware.** See [`SHIPPED.md`](SHIPPED.md) for the wrap-up summary, deviations from the original spec, and what's still pending.
 
 ## Decisions (locked-in 2026-05-09)
 
