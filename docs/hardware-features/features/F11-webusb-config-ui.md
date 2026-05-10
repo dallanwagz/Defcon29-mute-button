@@ -1,6 +1,6 @@
 # F11 — WebUSB config UI
 
-> Status: **planned** · Risk: **high** · Owner: firmware + web app
+> Status: **stage 1 in progress** (firmware descriptors flashed, no enumeration regression; web app + Pages deploy + Chrome roundtrip pending) · Risk: **high** · Owner: firmware + web app
 
 ## Goal
 
@@ -195,12 +195,23 @@ _To be filled in after manual verification._
 
 ### Implementation phase
 
-- [ ] Firmware code complete (BOS, MS-OS 2.0, control transfer plumbing)
-- [ ] Web app code complete
-- [ ] Build passes (≤ 56 KB) with `ENABLE_WEBUSB`
-- [ ] GitHub Pages deploy live + browser auto-suggests landing URL
-- [ ] Web app pairs to badge, performs end-to-end edit-and-write
-- [ ] No regression to existing CDC/HID behavior
+- [x] Firmware code complete (BOS, MS-OS 2.0, GET_URL handler — `Firmware/Source/DC29/src/usb_webusb.{c,h}`; conf_usb.h hooks `USB_DEVICE_SPECIFIC_REQUEST` to it)
+- [ ] Web app code complete (deferred to stage 2)
+- [x] Build passes (≤ 56 KB) — text 51008 → 51088 B (+80 B descriptors + handler)
+- [ ] GitHub Pages deploy live + browser auto-suggests landing URL (deferred to stage 2/3)
+- [ ] Web app pairs to badge, performs end-to-end edit-and-write (deferred to stage 3)
+- [x] No regression to existing CDC/HID behavior — verified 2026-05-09 post-flash: `dc29 vault list` returned both slots, `dc29 play_beep CONFIRM` + `CI_PASSED` audible, EEPROM persisted from prior F07 boot
+
+**F11 stage-1 deviations from spec:**
+- Build flag `ENABLE_WEBUSB` is **not** implemented — descriptor cost is ~150 B and not worth a per-build toggle on a single-target project. If a minimal build becomes a goal later, it's a 5-minute add via `#ifdef`.
+- The vendor-class control-transfer command for raw protocol bytes (web-app-to-firmware data path) is also deferred to stage 2; the web app needs it before any read/write, but stage 1 only ships descriptors so Chrome will offer the landing URL.
+
+**Stage-2 plan (next session):**
+1. Add a vendor request handler that proxies a `controlTransferOut` payload directly into the existing escape-byte parser in `serialconsole.c` (so the web app can send `0x01 ...` byte sequences via EP0 instead of CDC).
+2. Write `web/dc29-config/index.html` + `protocol.js` (~600 LOC vanilla JS).
+3. Add `.github/workflows/pages.yml` that publishes `web/dc29-config/` to `gh-pages` on `main` push.
+4. **User must manually enable Pages** in repo Settings → Pages → Source: GitHub Actions.
+5. Plug badge into Chrome — verify the landing-URL auto-suggest, then verify the full keymap/vault/LED roundtrip.
 
 **Implementation reviewed by:** _ _   **Date:** _ _
 

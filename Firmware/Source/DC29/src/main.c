@@ -48,6 +48,7 @@
 #include "keys.h"
 #include "input.h"
 #include "jiggler.h"
+#include "usb_webusb.h"
 #include "serialconsole.h"
 #include "wled_fx.h"
 
@@ -429,11 +430,15 @@ int main(void)
 	extint_chan_enable_callback(7,EXTINT_CALLBACK_TYPE_DETECT);
 	
 	timer_init();
-	
+
 	configure_usart();
 	configure_usart_callbacks();
-	
-	
+
+	/* F11 stage 1 — wire BOS descriptor into ASF before any udc_start so
+	 * the host gets WebUSB / MS-OS 2.0 capabilities on the first
+	 * enumeration request.  Idempotent, just sets a pointer. */
+	usb_webusb_init();
+
 	if(port_pin_get_input_level(USB_VBUS_PIN)){
 		// Start USB stack to authorize VBus monitoring
 		//disable_usart_top();
