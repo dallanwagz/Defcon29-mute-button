@@ -484,6 +484,90 @@ def test_rx_driven_panels(p) -> None:
 
 # ─── Entry point ──────────────────────────────────────────────────────
 
+def test_audio_reactive(browser) -> None:
+    section("Audio-reactive engine (synthetic FFT data)")
+    with page_with_console_capture(browser) as page:
+        page.add_init_script(MOCK_SERIAL_INIT)
+        page.goto(URL, wait_until="networkidle", timeout=15000)
+
+        # Panel renders.
+        check("Audio-reactive panel renders", page.locator("h2:has-text('Audio reactive')").count() == 1)
+        check("Start button enabled at load", not page.eval_on_selector("#btn-ar-start", "el => el.disabled"))
+        check("Stop button disabled at load",     page.eval_on_selector("#btn-ar-stop",  "el => el.disabled"))
+
+        # Pure-engine logic: import the module + drive it with synthetic
+        # FFT frames.  Mock the badge to capture calls.
+        result = page.evaluate(
+            r"""async () => {
+                const ar = await import('./audio_reactive.js');
+                const calls = [];
+                const fakeBadge = {
+                    playBeep:  async (id) => calls.push(['beep', id]),
+                    paintAll:  async (a, b, c, d) => calls.push(['paint', a, b, c, d]),
+                };
+                const eng = new ar.AudioReactiveEngine(fakeBadge, { beatThreshold: 1.5 });
+
+                // Build a quiet baseline so the rolling stddev is meaningful.
+                const quiet = new Uint8Array(128);
+                for (let i = 0; i < 8; i++) quiet[i] = 8 + (i % 3);   // a tiny bit of bass jitter
+                let t = 0;
+                for (let i = 0; i < 20; i++) {
+                    await eng.tick(quiet, t);
+                    t += 16;
+                }
+                const callsBeforeBeat = calls.length;
+
+                // Spike the bass to trigger a beat.
+                const spike = new Uint8Array(128);
+                for (let i = 0; i < 8; i++) spike[i] = 250;
+                for (let i = 8; i < 64; i++) spike[i] = 80 + (i % 30);   // mids/highs for color viz
+                await eng.tick(spike, t);
+
+                return {
+                    callsBeforeBeat,
+                    finalCalls: calls,
+                    paletteCount: Object.keys(ar.AUDIO_PALETTES).length,
+                };
+            }"""
+        )
+
+        check("5 palettes shipped", result["paletteCount"] == 5, str(result["paletteCount"]))
+        # Quiet baseline should still drive LEDs every tick (paintAll), but no beeps.
+        beep_calls = [c for c in result["finalCalls"] if c[0] == "beep"]
+        paint_calls = [c for c in result["finalCalls"] if c[0] == "paint"]
+        check("baseline frames drive LEDs (paintAll fires per tick)",
+              len(paint_calls) >= 20, f"got {len(paint_calls)} paint calls")
+        check("bass spike triggers a beat → KICK pattern (id=8)",
+              len(beep_calls) >= 1 and beep_calls[-1] == ["beep", 8],
+              f"beep_calls={beep_calls}")
+
+        # Toggling driveLeds=false stops paint calls.
+        result2 = page.evaluate(
+            r"""async () => {
+                const ar = await import('./audio_reactive.js');
+                const calls = [];
+                const fakeBadge = { playBeep: async () => {}, paintAll: async (...a) => calls.push(['paint', ...a]) };
+                const eng = new ar.AudioReactiveEngine(fakeBadge, { driveLeds: false });
+                const data = new Uint8Array(128);
+                for (let i = 0; i < 5; i++) await eng.tick(data, i * 16);
+                return calls.length;
+            }"""
+        )
+        check("driveLeds=false suppresses paintAll", result2 == 0, f"got {result2} paint calls with driveLeds=false")
+
+        # fftToColors maps a flat-FFT input to per-band scaled palette entries.
+        colors = page.evaluate(
+            """async () => {
+                const ar = await import('./audio_reactive.js');
+                // Flat FFT of magnitude 200 → each band scales to ~100% of palette color
+                const data = new Uint8Array(128);
+                for (let i = 0; i < data.length; i++) data[i] = 200;
+                return ar.fftToColors(data, ar.AUDIO_PALETTES.rainbow);
+            }"""
+        )
+        check("fftToColors returns 4 RGB tuples", len(colors) == 4 and all(len(c) == 3 for c in colors), str(colors))
+
+
 def test_onboarding_tour(browser) -> None:
     section("Onboarding tour (first-launch + manual replay)")
 
@@ -544,6 +628,7 @@ def main() -> int:
             test_hash_banner(browser)
             test_mocked_serial_protocol(browser)
             test_rx_driven_panels(browser)
+            test_audio_reactive(browser)
             test_onboarding_tour(browser)
         except Exception as exc:
             print(f"\nFATAL: {type(exc).__name__}: {exc}")

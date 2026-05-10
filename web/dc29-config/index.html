@@ -375,6 +375,46 @@
   </div>
 
   <div class="panel">
+    <h2>Audio reactive (browser)</h2>
+    <p class="hint">
+      Captures audio via Chrome's screen-share dialog, runs FFT + beat
+      detection in JS, drives badge LEDs and (optionally) fires the F04
+      KICK pattern on each beat.  <b>No BlackHole / Multi-Output Device
+      required</b> — replaces the Python <code>audio-reactive</code>
+      bridge.<br>
+      <b>Important:</b> when Chrome prompts to pick a screen / window /
+      tab, <b>tick the "Share audio" checkbox</b> at the bottom of the
+      dialog (or pick "Chrome Tab" and tick "Share tab audio").  Silent
+      video captures are useless for FFT.
+    </p>
+    <div class="row">
+      <button id="btn-ar-start" class="primary">Start capture</button>
+      <button id="btn-ar-stop" class="danger" disabled>Stop</button>
+      <span id="ar-status" style="color: var(--text-muted); font-size: 13px">not capturing</span>
+    </div>
+    <div class="row" style="margin-top: 8px">
+      <label for="ar-palette" style="width: 90px">Palette</label>
+      <select id="ar-palette" style="width: 160px">
+        <option value="rainbow">Rainbow</option>
+        <option value="sunset">Sunset</option>
+        <option value="ocean">Ocean</option>
+        <option value="fire">Fire</option>
+        <option value="party">Party</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="ar-thresh" style="width: 90px">Beat sensitivity</label>
+      <input type="range" id="ar-thresh" min="0.5" max="3.0" step="0.1" value="1.5" style="flex: 1; max-width: 240px">
+      <span id="ar-thresh-val" style="width: 40px; text-align: right; color: var(--text-muted)">1.5σ</span>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="ar-leds" checked> Drive LEDs</label>
+      <label><input type="checkbox" id="ar-beats" checked> Fire KICK on beat</label>
+    </div>
+    <canvas id="ar-fft-viz" width="400" height="60" style="margin-top: 10px; width: 100%; max-width: 400px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel-2);"></canvas>
+  </div>
+
+  <div class="panel">
     <h2>Type any string (F06)</h2>
     <p class="hint">
       Sends arbitrary text to the focused window via the HID burst
@@ -441,6 +481,7 @@ import {
     BeepPattern, asciiToHidPair, keyEventToHidPair,
 } from "./protocol.js";
 import { startTour, resetOnboarding } from "./onboarding.js";
+import { AudioReactiveEngine, startScreenCapture } from "./audio_reactive.js";
 
 const badge = new BadgeAPI();
 const $ = (sel) => document.querySelector(sel);
@@ -1293,6 +1334,93 @@ $("#btn-share-discard").addEventListener("click", () => {
         log(`share: malformed #cfg in URL (${err.message})`, "err");
     }
 })();
+
+
+// ─── Audio reactive (Phase 2)
+//
+// Engine is constructed once and outlives any individual capture
+// session — startScreenCapture() returns a stop handle we hold onto.
+
+const audioEngine = new AudioReactiveEngine(badge, {
+    beatThreshold: 1.5,
+    palette: "rainbow",
+});
+let audioSession = null;     // {stop, stream} from startScreenCapture
+let audioVizRaf = 0;
+window.__audioEngine = audioEngine;   // exposed for Playwright tests
+
+function setArStatus(text, ok = false) {
+    const el = $("#ar-status");
+    el.textContent = text;
+    el.style.color = ok ? "var(--accent-ok)" : "var(--text-muted)";
+}
+
+function arButtons(running) {
+    $("#btn-ar-start").disabled = running;
+    $("#btn-ar-stop").disabled = !running;
+}
+arButtons(false);
+
+function drawArViz() {
+    const canvas = $("#ar-fft-viz");
+    const ctx = canvas.getContext("2d");
+    const data = audioEngine.lastFft();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!data) return;
+    const len = Math.min(64, data.length);
+    const w = canvas.width / len;
+    for (let i = 0; i < len; i++) {
+        const v = data[i] / 255;
+        const h = v * canvas.height;
+        ctx.fillStyle = `hsl(${(i / len) * 270}, 80%, ${30 + v * 40}%)`;
+        ctx.fillRect(i * w, canvas.height - h, w - 1, h);
+    }
+    audioVizRaf = requestAnimationFrame(drawArViz);
+}
+
+$("#ar-palette").addEventListener("change", (ev) => {
+    audioEngine.palette = ev.target.value;
+    log(`audio palette → ${ev.target.value}`);
+});
+$("#ar-thresh").addEventListener("input", (ev) => {
+    const v = parseFloat(ev.target.value);
+    audioEngine.beatThreshold = v;
+    $("#ar-thresh-val").textContent = `${v.toFixed(1)}σ`;
+});
+$("#ar-leds").addEventListener("change",  (ev) => { audioEngine.driveLeds = ev.target.checked; });
+$("#ar-beats").addEventListener("change", (ev) => { audioEngine.fireBeats = ev.target.checked; });
+
+$("#btn-ar-start").addEventListener("click", async () => {
+    if (audioSession) return;
+    if (!badge.connected) {
+        log("audio reactive: connect to badge first", "err");
+        return;
+    }
+    setArStatus("requesting screen / tab capture…");
+    try {
+        audioSession = await startScreenCapture(audioEngine);
+        setArStatus("capturing — playing audio will reach the badge", true);
+        log("audio reactive: capture started", "ok");
+        arButtons(true);
+        drawArViz();
+    } catch (err) {
+        setArStatus(`failed: ${err.message}`);
+        log(`audio reactive: ${err.message}`, "err");
+    }
+});
+
+$("#btn-ar-stop").addEventListener("click", () => {
+    if (!audioSession) return;
+    audioSession.stop();
+    audioSession = null;
+    cancelAnimationFrame(audioVizRaf);
+    setArStatus("not capturing");
+    log("audio reactive: stopped");
+    arButtons(false);
+    // Clear the canvas.
+    const c = $("#ar-fft-viz");
+    c.getContext("2d").clearRect(0, 0, c.width, c.height);
+});
 
 
 // ─── Onboarding tour (Phase 1)
