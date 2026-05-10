@@ -404,6 +404,62 @@ export class BadgeAPI {
         await this._write([ESCAPE, CMD_VAULT, 'C'.charCodeAt(0), slot & 0xff]);
     }
 
+    // ─── F06 HID burst (used by the "Type any string" panel) ─────────
+
+    async hidBurst(pairs) {
+        // Auto-chunk to MAX_BURST_PAIRS per command; wait between chunks
+        // for the firmware to finish (~10 ms per pair × frames).
+        let i = 0;
+        const total = pairs.length;
+        while (i < total) {
+            const chunkN = Math.min(MAX_BURST_PAIRS, total - i);
+            const buf = [
+                ESCAPE, CMD_HID_BURST,
+                chunkN & 0xff, (chunkN >> 8) & 0xff,
+            ];
+            for (let j = 0; j < chunkN; j++) {
+                const [m, k] = pairs[i + j];
+                buf.push(m & 0xff, k & 0xff);
+            }
+            await this._write(buf);
+            // Per-pair cost: 4 frames × ~10 ms (transmit-flag gated, BURST_FRAME_MS=2).
+            // Pad slack so we never collide with BURST_BUSY.
+            await new Promise((r) => setTimeout(r, chunkN * 12 + 80));
+            i += chunkN;
+        }
+    }
+
+    async typeString(text) {
+        const pairs = textToHidPairs(text);
+        if (pairs.length === 0) return 0;
+        await this.hidBurst(pairs);
+        return pairs.length;
+    }
+
+    // ─── Keymap (existing CMD_SET_KEY / CMD_QUERY_KEY) ────────────────
+
+    async setKey(button, modifier, keycode) {
+        await this._write([
+            ESCAPE, CMD_SET_KEY,
+            button & 0xff, modifier & 0xff, keycode & 0xff,
+        ]);
+    }
+
+    async queryKey(button) {
+        // Fire-and-forget; the reply arrives via onKeyReply.  Caller
+        // wires its own callback before invoking and unwires after.
+        await this._write([ESCAPE, CMD_QUERY_KEY, button & 0xff]);
+    }
+
+    // ─── WLED knobs ───────────────────────────────────────────────────
+
+    async wledSet(speed, intensity, palette) {
+        await this._write([
+            ESCAPE, 'W'.charCodeAt(0),
+            speed & 0xff, intensity & 0xff, palette & 0xff,
+        ]);
+    }
+
     async setSliderEnabled(enabled) {
         await this._write([ESCAPE, CMD_SET_SLIDER, enabled ? 1 : 0]);
     }

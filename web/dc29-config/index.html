@@ -260,6 +260,74 @@
   </div>
 
   <div class="panel">
+    <h2>Per-button keymap</h2>
+    <p class="hint">
+      What each badge button types via HID-Kbd.  Each button stores a
+      single <code>(modifier, key)</code> pair in EEPROM.  Modifier
+      checkboxes map to the LEFT side of each modifier (Ctrl=0x01,
+      Shift=0x02, Alt=0x04, Cmd=0x08); right-side modifiers are
+      preserved if the badge already had them set.  Key field accepts
+      a single char, a special name (<code>Enter</code> /
+      <code>Tab</code> / <code>Esc</code> / <code>Space</code> /
+      <code>Up</code> / <code>F1</code>…<code>F12</code>), a media
+      key (<code>media:mute</code> / <code>volup</code> /
+      <code>voldown</code> / <code>play</code>), or a hex literal
+      (<code>0x04</code>).
+    </p>
+    <div id="keymap-rows"><!-- populated by JS --></div>
+    <div class="row" style="margin-top: 10px">
+      <button id="btn-keymap-refresh">Refresh from badge</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>WLED knobs</h2>
+    <p class="hint">
+      Speed / intensity / palette controls used by the WLED-ported
+      effect modes (firmware effect IDs ≥ 19).  Effects in the
+      hand-rolled range (1–18) ignore the palette but still respect
+      speed + intensity.
+    </p>
+    <div class="row">
+      <label for="wled-speed" style="width: 90px">Speed</label>
+      <input type="range" id="wled-speed" min="0" max="255" value="128" style="flex: 1; max-width: 240px">
+      <span id="wled-speed-val" style="width: 40px; text-align: right; color: var(--text-muted)">128</span>
+    </div>
+    <div class="row">
+      <label for="wled-int" style="width: 90px">Intensity</label>
+      <input type="range" id="wled-int" min="0" max="255" value="128" style="flex: 1; max-width: 240px">
+      <span id="wled-int-val" style="width: 40px; text-align: right; color: var(--text-muted)">128</span>
+    </div>
+    <div class="row">
+      <label for="wled-pal" style="width: 90px">Palette</label>
+      <select id="wled-pal" style="width: 200px">
+        <option value="0">Rainbow</option>
+        <option value="1">Heat</option>
+        <option value="2">Ocean</option>
+        <option value="3">Lava</option>
+        <option value="4">Pacifica</option>
+        <option value="5">Sunset</option>
+        <option value="6">Forest</option>
+        <option value="7">Party</option>
+      </select>
+      <button id="btn-wled-apply" class="primary">Apply</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Type any string (F06)</h2>
+    <p class="hint">
+      Sends arbitrary text to the focused window via the HID burst
+      path.  Auto-chunks payloads >256 (mod, key) pairs.  3 s
+      countdown so you can switch tabs before keystrokes land.
+    </p>
+    <div class="row">
+      <input type="text" id="hb-input" placeholder="text to type…" style="flex: 1; max-width: 400px">
+      <button id="btn-hb-fire" class="primary">Type</button>
+    </div>
+  </div>
+
+  <div class="panel">
     <h2>Effect mode</h2>
     <p class="hint">
       Firmware-driven LED effects.  Picks one and sends it; the badge
@@ -307,7 +375,7 @@
 </footer>
 
 <script type="module">
-import { BadgeAPI, VAULT_SLOTS, TOTP_SLOTS, BeepPattern } from "./protocol.js";
+import { BadgeAPI, VAULT_SLOTS, TOTP_SLOTS, BeepPattern, asciiToHidPair } from "./protocol.js";
 
 const badge = new BadgeAPI();
 const $ = (sel) => document.querySelector(sel);
@@ -347,6 +415,7 @@ $("#btn-connect").addEventListener("click", async () => {
         eventLogEl.textContent = "(listening for badge events…)";
         await refreshVault();
         await refreshTotp();
+        await refreshKeymap();
     } catch (err) {
         log(`connect failed: ${err.message}`, "err");
     }
@@ -617,6 +686,255 @@ badge.onChord = (n) => pushEvent(`4-button chord ${n === 2 ? "(long)" : "(short)
 badge.onEffect = (m) => pushEvent(`effect mode → ${m}`);
 badge.onKeyAck = (n) => pushEvent(`keymap write ack: btn ${n}`);
 badge.onKeyReply = (n, m, k) => pushEvent(`keymap reply: btn ${n}  mod=0x${m.toString(16).padStart(2,"0")} kc=0x${k.toString(16).padStart(2,"0")})`);
+
+// ─── Per-button keymap editor (Tier 2.1)
+//
+// HID Usage IDs / modifier bits per the HID spec.  Modifier checkboxes
+// only expose the LEFT side; right-side bits in the badge's existing
+// keymap are preserved across writes by ORing with the original mod.
+
+const HID_MOD_LCTRL  = 0x01;
+const HID_MOD_LSHIFT = 0x02;
+const HID_MOD_LALT   = 0x04;
+const HID_MOD_LGUI   = 0x08;
+const HID_MOD_LEFT_MASK = HID_MOD_LCTRL | HID_MOD_LSHIFT | HID_MOD_LALT | HID_MOD_LGUI;
+
+const HID_MEDIA_FLAG = 240;       // firmware sentinel: mod=240 → keycode is a Consumer-page code
+const HID_MEDIA_NAMES = {
+    "mute":    0x40,
+    "volup":   0x80,
+    "voldown": 0x20,
+    "play":    0xCD,
+    "next":    0xB5,
+    "prev":    0xB6,
+    "stop":    0xB7,
+};
+
+const HID_NAMED = {
+    "enter":     0x28,
+    "esc":       0x29,
+    "escape":    0x29,
+    "backspace": 0x2A,
+    "tab":       0x2B,
+    "space":     0x2C,
+    "right":     0x4F,
+    "left":      0x50,
+    "down":      0x51,
+    "up":        0x52,
+};
+for (let i = 1; i <= 12; i++) HID_NAMED[`f${i}`] = 0x39 + i;   // F1..F12
+
+function parseKeyText(s) {
+    // Returns { mod_extra, key } or throws.  mod_extra is OR'd onto the
+    // checkbox-derived modifier (used for media-key sentinel + nothing else).
+    s = s.trim();
+    if (!s) return { mod_extra: 0, key: 0 };
+
+    // Hex literal "0xNN" — raw HID code, no extra modifier.
+    if (/^0x[0-9a-f]{1,2}$/i.test(s)) {
+        return { mod_extra: 0, key: parseInt(s, 16) & 0xff };
+    }
+
+    // Media key: "media:NAME"
+    if (s.toLowerCase().startsWith("media:")) {
+        const name = s.slice(6).toLowerCase();
+        const code = HID_MEDIA_NAMES[name];
+        if (code === undefined) {
+            throw new Error(`unknown media key '${name}'.  Try mute / volup / voldown / play / next / prev / stop.`);
+        }
+        return { mod_extra: HID_MEDIA_FLAG, key: code };
+    }
+
+    // Named key
+    const lc = s.toLowerCase();
+    if (HID_NAMED[lc] !== undefined) return { mod_extra: 0, key: HID_NAMED[lc] };
+
+    // Single ASCII char
+    if (s.length === 1) {
+        const pair = asciiToHidPair(s);
+        if (!pair) throw new Error(`no HID mapping for '${s}'`);
+        // pair[0] is shift if uppercase/punctuation; we surface that as part
+        // of the key text (caller can choose to add Shift checkbox).  For
+        // simplicity, we just return the keycode and ignore implicit shift —
+        // user toggles Shift checkbox themselves for symbols like "!".
+        return { mod_extra: 0, key: pair[1] };
+    }
+
+    throw new Error(
+        `couldn't parse '${s}'.  Use a single char, a hex literal (0xNN), ` +
+        `a named key (Enter / Tab / Esc / Space / Up / F1…F12), or a media key (media:mute).`
+    );
+}
+
+function formatKey(mod, key) {
+    // Format the (mod, key) pair from the badge into something the user can edit.
+    if (key === 0) return "";
+    if (mod === HID_MEDIA_FLAG) {
+        for (const [name, code] of Object.entries(HID_MEDIA_NAMES)) {
+            if (code === key) return `media:${name}`;
+        }
+        return `0x${key.toString(16).padStart(2, "0")}`;
+    }
+    // Named?
+    for (const [name, code] of Object.entries(HID_NAMED)) {
+        if (code === key) return name;
+    }
+    // Letter / digit / common punct?  Reverse-lookup via asciiToHidPair.
+    for (let cc = 0x20; cc < 0x7f; cc++) {
+        const ch = String.fromCharCode(cc);
+        const p = asciiToHidPair(ch);
+        if (p && p[1] === key && p[0] === 0) return ch;
+    }
+    return `0x${key.toString(16).padStart(2, "0")}`;
+}
+
+// Per-button state cached from the last query — used to preserve the
+// right-side modifier bits when we write back.
+const keymapBadgeState = { 1: { mod: 0, key: 0 }, 2: { mod: 0, key: 0 }, 3: { mod: 0, key: 0 }, 4: { mod: 0, key: 0 } };
+
+function buildKeymapRows() {
+    const container = $("#keymap-rows");
+    container.innerHTML = "";
+    for (let n = 1; n <= 4; n++) {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.dataset.btn = n;
+        row.innerHTML = `
+            <label style="width: 70px">Button ${n}</label>
+            <label><input type="checkbox" data-mod="ctrl"> Ctrl</label>
+            <label><input type="checkbox" data-mod="shift"> Shift</label>
+            <label><input type="checkbox" data-mod="alt"> Alt</label>
+            <label><input type="checkbox" data-mod="cmd"> Cmd</label>
+            <label>Key:</label>
+            <input type="text" class="key-input" placeholder="a single char / 0xNN / Enter / media:mute" style="flex: 1; max-width: 280px">
+            <button data-action="set">Set</button>
+            <button data-action="clear" class="danger">Clear</button>
+        `;
+        container.appendChild(row);
+    }
+    container.addEventListener("click", onKeymapAction);
+}
+
+function setKeymapRowFromBadge(btn, mod, key) {
+    keymapBadgeState[btn] = { mod, key };
+    const row = $(`#keymap-rows .row[data-btn="${btn}"]`);
+    if (!row) return;
+    row.querySelector(`input[data-mod="ctrl"]`).checked  = (mod & HID_MOD_LCTRL)  !== 0;
+    row.querySelector(`input[data-mod="shift"]`).checked = (mod & HID_MOD_LSHIFT) !== 0;
+    row.querySelector(`input[data-mod="alt"]`).checked   = (mod & HID_MOD_LALT)   !== 0;
+    row.querySelector(`input[data-mod="cmd"]`).checked   = (mod & HID_MOD_LGUI)   !== 0;
+    row.querySelector(`.key-input`).value = formatKey(mod, key);
+}
+
+async function onKeymapAction(ev) {
+    const btn_el = ev.target.closest("button[data-action]");
+    if (!btn_el) return;
+    const row = btn_el.closest(".row");
+    const n = parseInt(row.dataset.btn, 10);
+    const action = btn_el.dataset.action;
+
+    if (action === "clear") {
+        try {
+            await badge.setKey(n, 0, 0);
+            log(`keymap btn ${n} cleared`, "ok");
+            setKeymapRowFromBadge(n, 0, 0);
+        } catch (err) {
+            log(`keymap clear: ${err.message}`, "err");
+        }
+        return;
+    }
+
+    if (action === "set") {
+        const text = row.querySelector(".key-input").value;
+        let parsed;
+        try { parsed = parseKeyText(text); }
+        catch (err) { log(`btn ${n}: ${err.message}`, "err"); return; }
+
+        // Combine: checkboxes (left modifier bits) + parsed.mod_extra + preserved right-side bits.
+        let mod = parsed.mod_extra;
+        if (parsed.mod_extra === HID_MEDIA_FLAG) {
+            // Media key: mod is the sentinel, ignore the checkbox modifiers.
+        } else {
+            if (row.querySelector(`input[data-mod="ctrl"]`).checked)  mod |= HID_MOD_LCTRL;
+            if (row.querySelector(`input[data-mod="shift"]`).checked) mod |= HID_MOD_LSHIFT;
+            if (row.querySelector(`input[data-mod="alt"]`).checked)   mod |= HID_MOD_LALT;
+            if (row.querySelector(`input[data-mod="cmd"]`).checked)   mod |= HID_MOD_LGUI;
+            // Preserve right-side bits from the last-known state.
+            mod |= (keymapBadgeState[n].mod & ~HID_MOD_LEFT_MASK & ~HID_MEDIA_FLAG);
+        }
+
+        try {
+            await badge.setKey(n, mod, parsed.key);
+            log(`keymap btn ${n} → mod=0x${mod.toString(16).padStart(2,"0")} key=0x${parsed.key.toString(16).padStart(2,"0")}`, "ok");
+            keymapBadgeState[n] = { mod, key: parsed.key };
+        } catch (err) {
+            log(`keymap set: ${err.message}`, "err");
+        }
+    }
+}
+
+// Wire onKeyReply to populate the rows when queries arrive.
+const _origOnKeyReply = badge.onKeyReply;
+badge.onKeyReply = (n, mod, kc) => {
+    setKeymapRowFromBadge(n, mod, kc);
+    if (_origOnKeyReply) _origOnKeyReply(n, mod, kc);   // chain to the event log handler
+};
+
+async function refreshKeymap() {
+    if (!badge.connected) return;
+    for (let n = 1; n <= 4; n++) {
+        try { await badge.queryKey(n); }
+        catch (err) { log(`keymap query btn ${n}: ${err.message}`, "err"); }
+        await new Promise((r) => setTimeout(r, 50));   // small space between queries
+    }
+}
+$("#btn-keymap-refresh").addEventListener("click", refreshKeymap);
+buildKeymapRows();
+
+// ─── WLED panel (Tier 2.2)
+function bindSliderDisplay(slider, display) {
+    slider.addEventListener("input", () => { display.textContent = slider.value; });
+}
+bindSliderDisplay($("#wled-speed"), $("#wled-speed-val"));
+bindSliderDisplay($("#wled-int"),   $("#wled-int-val"));
+
+$("#btn-wled-apply").addEventListener("click", async () => {
+    const speed     = parseInt($("#wled-speed").value, 10);
+    const intensity = parseInt($("#wled-int").value, 10);
+    const palette   = parseInt($("#wled-pal").value, 10);
+    try {
+        await badge.wledSet(speed, intensity, palette);
+        log(`wled: speed=${speed} int=${intensity} pal=${palette}`, "ok");
+    } catch (err) {
+        log(`wled: ${err.message}`, "err");
+    }
+});
+
+// ─── Type any string (Tier 2.3)
+$("#btn-hb-fire").addEventListener("click", async () => {
+    const inp = $("#hb-input");
+    const text = inp.value;
+    if (!text) { log("type: empty input", "err"); return; }
+    const btn = $("#btn-hb-fire");
+    const original = btn.textContent;
+    btn.disabled = true;
+    try {
+        for (let i = 3; i > 0; i--) {
+            btn.textContent = `Typing in ${i}…`;
+            log(`typing in ${i}s — switch focus to your target window`);
+            await new Promise((r) => setTimeout(r, 1000));
+        }
+        btn.textContent = "Typing…";
+        const n = await badge.typeString(text);
+        log(`typed ${n} pairs (${text.length} chars)`, "ok");
+        inp.value = "";
+    } catch (err) {
+        log(`type: ${err.message}`, "err");
+    } finally {
+        btn.textContent = original;
+        btn.disabled = false;
+    }
+});
 
 // ─── Self-check on load
 if (!('serial' in navigator)) {
