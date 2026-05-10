@@ -124,13 +124,6 @@ extern void main_cdc_set_dtr(uint8_t port, bool b_enable);
 #define  USB_DEVICE_MAX_EP             4 // 0 to max endpoint requested by interfaces
 //@}
 
-/* F11 — Vendor-request hook for WebUSB GET_URL + MS-OS 2.0 GetDescriptor.
- * Routes to usb_webusb_specific_request() defined in src/usb_webusb.c.
- * Standard / class / endpoint requests are still handled by ASF first;
- * this only fires for requests no built-in handler claimed. */
-extern bool usb_webusb_specific_request(void);
-#define  USB_DEVICE_SPECIFIC_REQUEST() usb_webusb_specific_request()
-
 //@}
 
 

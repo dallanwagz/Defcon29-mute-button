@@ -1,6 +1,6 @@
 # F11 — WebUSB config UI
 
-> Status: **stage 1 in progress** (firmware descriptors flashed, no enumeration regression; web app + Pages deploy + Chrome roundtrip pending) · Risk: **high** · Owner: firmware + web app
+> Status: **web app + workflow shipped (WebSerial-only); WebUSB descriptors reverted; Chrome roundtrip pending GH Pages enable** · Risk: **medium** (was high; dropped firmware risk by ditching WebUSB) · Owner: firmware (now zero) + web app
 
 ## Goal
 
@@ -195,23 +195,71 @@ _To be filled in after manual verification._
 
 ### Implementation phase
 
-- [x] Firmware code complete (BOS, MS-OS 2.0, GET_URL handler — `Firmware/Source/DC29/src/usb_webusb.{c,h}`; conf_usb.h hooks `USB_DEVICE_SPECIFIC_REQUEST` to it)
-- [ ] Web app code complete (deferred to stage 2)
-- [x] Build passes (≤ 56 KB) — text 51008 → 51088 B (+80 B descriptors + handler)
-- [ ] GitHub Pages deploy live + browser auto-suggests landing URL (deferred to stage 2/3)
-- [ ] Web app pairs to badge, performs end-to-end edit-and-write (deferred to stage 3)
-- [x] No regression to existing CDC/HID behavior — verified 2026-05-09 post-flash: `dc29 vault list` returned both slots, `dc29 play_beep CONFIRM` + `CI_PASSED` audible, EEPROM persisted from prior F07 boot
+- [x] Firmware code complete — **zero firmware change** in the final design (see "Architecture pivot" below).  The stage-1 WebUSB descriptors were implemented, flashed, and then reverted after we decided the auto-suggest UX wasn't worth the firmware-↔-URL coupling.
+- [x] Web app code complete — `web/dc29-config/index.html` + `protocol.js`.  Vanilla JS (no framework), single page.
+- [x] Build passes (≤ 56 KB) — back to 51008 B post-revert.
+- [ ] GitHub Pages deploy live (deferred — **user must enable Pages** in repo Settings → Pages → Source: **GitHub Actions** before the workflow can publish).
+- [ ] Web app pairs to badge, performs end-to-end edit-and-write (deferred to user-side Chrome roundtrip).
+- [x] No regression to existing CDC/HID behavior — verified post-revert 2026-05-09: `dc29 vault list` returned both slots, EEPROM persisted across the WebUSB flash + revert flash.
 
-**F11 stage-1 deviations from spec:**
-- Build flag `ENABLE_WEBUSB` is **not** implemented — descriptor cost is ~150 B and not worth a per-build toggle on a single-target project. If a minimal build becomes a goal later, it's a 5-minute add via `#ifdef`.
-- The vendor-class control-transfer command for raw protocol bytes (web-app-to-firmware data path) is also deferred to stage 2; the web app needs it before any read/write, but stage 1 only ships descriptors so Chrome will offer the landing URL.
+## Architecture pivot — WebSerial only (2026-05-09)
 
-**Stage-2 plan (next session):**
-1. Add a vendor request handler that proxies a `controlTransferOut` payload directly into the existing escape-byte parser in `serialconsole.c` (so the web app can send `0x01 ...` byte sequences via EP0 instead of CDC).
-2. Write `web/dc29-config/index.html` + `protocol.js` (~600 LOC vanilla JS).
-3. Add `.github/workflows/pages.yml` that publishes `web/dc29-config/` to `gh-pages` on `main` push.
-4. **User must manually enable Pages** in repo Settings → Pages → Source: GitHub Actions.
-5. Plug badge into Chrome — verify the landing-URL auto-suggest, then verify the full keymap/vault/LED roundtrip.
+The original plan was WebUSB end-to-end: BOS descriptor for browser
+auto-discovery + a vendor EP0 control-transfer command for the data
+path.  After shipping stage 1 (just the descriptors) we evaluated the
+trade-off:
+
+- **WebUSB** gives the browser a "Visit dwagz1.github.io/dc29-config?"
+  toast on plug-in.  Subtle UX, easy to miss.
+- **WebSerial** is a separate browser API that opens any USB-CDC port
+  with user permission — works on the badge as it stands today, no
+  firmware change needed.
+
+Decision: the auto-suggest toast wasn't worth coupling the firmware
+to a hardcoded landing URL (any URL change would require a re-flash).
+Reverted the WebUSB descriptors; the web app uses **WebSerial only**.
+The user navigates to the URL via bookmark or by following the README
+link, then clicks "Connect" inside the web app, which triggers
+Chrome's port picker.
+
+Functional impact: **zero**.  Both APIs need user permission, both
+work on Chrome / Edge across macOS / Windows / Linux.  WebSerial
+wires straight into the existing CDC + escape-byte protocol that
+Python already uses, so the web app is a pure re-implementation of
+the BadgeAPI surface in JS.
+
+## Files (final)
+
+**New:**
+- `web/dc29-config/index.html` — single-page UI (vanilla JS, no framework, ~430 LOC HTML + CSS + JS)
+- `web/dc29-config/protocol.js` — JS port of the protocol surface the UI uses
+- `.github/workflows/pages.yml` — auto-deploy to GitHub Pages on push to `main` that touches `web/dc29-config/**`
+
+**No firmware changes ship in the final F11.**
+
+## What the web app does
+
+- Connect / Disconnect via WebSerial (browser CDC).
+- **Vault (F07):** list both slots with previews; write any text; fire; clear.
+- **Stay Awake (F08):** one-shot pulse; autonomous mode with custom duration; cancel.
+- **LEDs:** per-LED color picker (live RAM-only paint); all-white / all-off shortcuts.
+- **Buzzer + button feedback:** haptic-click toggle (F03), takeover-flash toggle, F04 beep-pattern auditioner.
+- **Log pane** for command echoes and errors.
+
+Skipped per F11 Q3 default-accept: F04 pattern designer (auditioner is
+enough), HID-burst raw-byte UI (awkward), TOTP UI (F09 not built; will
+land naturally when F09 ships).
+
+## Setup the user must do once
+
+1. **Enable GitHub Pages** — repo Settings → Pages → Source: **GitHub Actions**.
+2. Push to `main` (the workflow auto-deploys).  First deploy takes ~30 s.
+3. Open `https://dwagz1.github.io/Defcon29-mute-button/` (the workflow
+   publishes from the repo root; if you want a vanity sub-path like
+   `/dc29/config`, configure a custom domain or rewrite the workflow's
+   upload path).  Bookmark it.
+4. In Chrome / Edge, click **Connect**, pick the badge's `usbmodem*`
+   entry from the picker, and start clicking around.
 
 **Implementation reviewed by:** _ _   **Date:** _ _
 

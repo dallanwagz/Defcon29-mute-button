@@ -1,0 +1,49 @@
+name: Deploy web/dc29-config to GitHub Pages
+
+# Triggers:
+#   - push to main that touches anything under web/dc29-config/
+#   - manual run (workflow_dispatch)
+#
+# One-time user setup (must be done in the GitHub web UI before this
+# workflow can publish anything):
+#   Repo → Settings → Pages → Source: GitHub Actions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/dc29-config/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one in-flight deployment at a time; queued runs replace prior queued runs.
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload web/dc29-config as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./web/dc29-config
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
