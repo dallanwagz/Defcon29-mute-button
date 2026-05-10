@@ -1,6 +1,6 @@
 # F10 — HID class switch at plug-in
 
-> Status: **planned** · Risk: **high** · Owner: firmware
+> Status: **hardware-verified end-to-end on macOS** (single-button-hold variant; Mode 2 reserved/not implemented) · Risk: **high** · Owner: firmware
 
 ## Goal
 
@@ -183,11 +183,24 @@ _To be filled in after manual verification._
 
 ### Implementation phase
 
-- [ ] Code complete
-- [ ] Build passes (≤ 56 KB) for all enabled modes
-- [ ] Bootloader recovery still works (B4-alone hold mounts DFU drive)
-- [ ] All declared modes enumerate cleanly on macOS
-- [ ] Cross-platform test passed where applicable (Windows / Linux)
+- [x] Code complete (`Firmware/Source/DC29/src/usb_modes.{c,h}` + main.c boot-time integration)
+- [x] Build passes (≤ 56 KB) — text 52280 → 52772 B (+492 B)
+- [x] Bootloader recovery still works — verified post-flash 2026-05-10: B4-alone hold mounts the DC29Badge drive; the final test re-flash itself was a recovery cycle.
+- [x] All declared modes enumerate cleanly on macOS — Default (CDC + HID-Kbd, vault list returns both slots), KBD-only (no CDC, B2 still produces system-mute media key, vault list correctly fails with "no badge serial port"), CDC-only (CDC works, HID gone), mode resets per power-cycle.
+- [ ] Cross-platform test passed where applicable (Windows / Linux) — **not run**, but bcdDevice rotation is in place per spec, so Windows should re-enumerate fresh on first plug-in per mode.
+
+**F10 deviations from original spec (recorded here):**
+- **Single-button holds** (B1 / B2 / B3) instead of the spec's B1+B4 chord for Mode 3.  Cleaner UX since B4 is reserved for DFU and we have an unused middle button anyway.  Per user redesign 2026-05-10.
+- **Mode 2 (HID-Kbd + HID-Mouse) is reserved, not implemented.**  Triggered by B2 hold but currently falls back to default mode (LED 2 still flashes so the user knows B2 was sampled).  We never built an HID-Mouse interface — F08 used the keyboard-wake-pulse fallback specifically to avoid the descriptor surgery.  Adding HID-Mouse later would slot cleanly into B2 without further mode-selection work.
+- **No `dc29 mode` CLI** — out of scope; the active mode is implicit (which interfaces enumerate).  Could be added later by parsing `system_profiler` output.
+- **Persistent mode override** explicitly out of scope per F10 Q4 default-accept.
+
+**Implementation notes:**
+- `udi_composite_desc.c` (vendored ASF file) is left untouched.  Default mode uses its descriptor exactly as before.
+- Alt-mode descriptors are hand-rolled in `usb_modes.c` as packed structs — KBD-only descriptor sets `bInterfaceNumber = 0` directly (the default `UDI_HID_KBD_DESC` macro bakes interface number 2 in via `UDI_HID_KBD_IFACE_NUMBER`, which is compile-time, so we built a parallel descriptor instead of fighting the macro).
+- CDC-only mode reuses the existing `UDI_CDC_*_DESC_0` macros since CDC was already at interface 0+1; we just drop the HID-Kbd block and shrink `wTotalLength` + `bNumInterfaces`.
+- `udc_config.confdev_lsfs` and `udc_config.conf_lsfs` are written at runtime in `usb_install_mode()` before `udc_start()`.  ASF tolerates this because `udc_config` itself is in RAM (only the const descriptor data is in flash).
+- 3-sample debounce at boot: ~10 ms / ~30 ms / ~50 ms.  All three samples must agree before committing to a non-default mode; bounce defaults to safe (mode 0).
 
 **Implementation reviewed by:** _ _   **Date:** _ _
 

@@ -48,6 +48,7 @@
 #include "keys.h"
 #include "input.h"
 #include "jiggler.h"
+#include "usb_modes.h"
 #include "serialconsole.h"
 #include "wled_fx.h"
 
@@ -433,6 +434,15 @@ int main(void)
 	configure_usart();
 	configure_usart_callbacks();
 
+	/* F10 — sample the buttons at cold-start (3-sample debounce ~50 ms)
+	 * and patch udc_config to expose the chosen descriptor variant.
+	 * MUST happen before udc_start().  Default (no button) leaves
+	 * udc_config alone so today's CDC + HID-Kbd composite is unchanged.
+	 * The bootloader's B4-trigger runs in a separate flash region BEFORE
+	 * any of our code, so DFU recovery is unaffected. */
+	usb_mode_t _boot_mode = usb_select_mode_at_boot();
+	usb_install_mode(_boot_mode);
+
 	if(port_pin_get_input_level(USB_VBUS_PIN)){
 		// Start USB stack to authorize VBus monitoring
 		//disable_usart_top();
@@ -451,7 +461,12 @@ int main(void)
 	touch_sensors_init();
 	
 	pwm_init();
-	
+
+	/* F10 LED-feedback — flash the LED for the held button twice white
+	 * so the user knows which mode was sampled.  Default mode flashes
+	 * LED 1 per spec.  Blocking ~500 ms; runs once at boot. */
+	usb_mode_led_feedback(_boot_mode);
+
 	//Startup LED Sequence
 	uint8_t delaytime = 40;
 	led_on(LED1R);
