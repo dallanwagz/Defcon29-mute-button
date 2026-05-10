@@ -123,12 +123,14 @@ def _parse_custom_duration(text: str) -> Optional[int]:
 
 _QUICK_PRESETS: list[tuple[str, str, int]] = [
     # (button_id, label, duration_secs)
-    ("qs-30m", "30 min", 30 * 60),
-    ("qs-1h", "1 hour", 1 * 3600),
-    ("qs-2h", "2 hour", 2 * 3600),
-    ("qs-4h", "4 hour", 4 * 3600),
-    ("qs-8h", "8 hour", 8 * 3600),
-    ("qs-inf", "Indefinite", INDEFINITE_SECS),
+    # Labels intentionally short / equal-width so the row of 6 fits in
+    # narrower terminals without Textual cropping the longest button.
+    ("qs-30m", "30 m",     30 * 60),
+    ("qs-1h",  "1 h",      1 * 3600),
+    ("qs-2h",  "2 h",      2 * 3600),
+    ("qs-4h",  "4 h",      4 * 3600),
+    ("qs-8h",  "8 h",      8 * 3600),
+    ("qs-inf", "Forever",  INDEFINITE_SECS),
 ]
 
 
@@ -169,6 +171,11 @@ class StayAwakeTab(Container):
     }
     StayAwakeTab #quick-row Button {
         margin-right: 1;
+        /* Explicit equal width — without this, Textual's flex layout
+         * gives the LAST child the remaining row space and clips the
+         * label to invisible.  9 cells comfortably fits "Forever". */
+        width: 11;
+        min-width: 11;
     }
     StayAwakeTab #custom-row {
         height: 3;
@@ -221,7 +228,7 @@ class StayAwakeTab(Container):
             yield Label("Quick start")
             with Horizontal(id="quick-row"):
                 for btn_id, label, _ in _QUICK_PRESETS:
-                    yield Button(f"[ {label} ]", id=btn_id)
+                    yield Button(label, id=btn_id)
             with Horizontal(id="custom-row"):
                 yield Label("Custom: ")
                 yield Input(placeholder="HH:MM or 1h30m", id="custom-input")
