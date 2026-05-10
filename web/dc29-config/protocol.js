@@ -55,6 +55,8 @@ export const EffectMode = {
 };
 
 export const CMD_TOTP        = 'o'.charCodeAt(0);
+export const CMD_MOD_TABLE   = 'm'.charCodeAt(0);
+export const CMD_WLED_SET    = 'W'.charCodeAt(0);
 
 export const BeepPattern = {
     SILENCE:        0,
@@ -107,6 +109,54 @@ export function textToHidPairs(text) {
         if (p) out.push(p);
     }
     return out;
+}
+
+
+// ─── KeyboardEvent → HID (mod, key) pair, for the macro recorder.
+//
+// e.key gives a human-readable name; we translate it (plus the modifier
+// flags) into the firmware's (mod, key) byte encoding.  Returns null if
+// the event was a pure modifier press (e.g. just Shift), so the caller
+// can ignore those.
+
+const _EVENT_KEY_HID = {
+    "Enter":     0x28,
+    "Escape":    0x29,
+    "Backspace": 0x2A,
+    "Tab":       0x2B,
+    " ":         0x2C,
+    "ArrowRight": 0x4F,
+    "ArrowLeft":  0x50,
+    "ArrowDown":  0x51,
+    "ArrowUp":    0x52,
+};
+for (let i = 1; i <= 12; i++) _EVENT_KEY_HID[`F${i}`] = 0x39 + i;
+
+export function keyEventToHidPair(ev) {
+    // Skip pure modifier presses (Shift / Ctrl / Alt / Meta alone).
+    if (["Shift", "Control", "Alt", "Meta"].includes(ev.key)) return null;
+
+    let mod = 0;
+    if (ev.ctrlKey)  mod |= 0x01;
+    if (ev.shiftKey) mod |= 0x02;
+    if (ev.altKey)   mod |= 0x04;
+    if (ev.metaKey)  mod |= 0x08;
+
+    // Named key lookup first.
+    const named = _EVENT_KEY_HID[ev.key];
+    if (named !== undefined) return [mod, named];
+
+    // Single printable char — use the same ASCII→HID table the rest of
+    // the app uses, but DON'T let asciiToHidPair add an implicit Shift
+    // for uppercase / shifted symbols, since we already captured Shift
+    // from ev.shiftKey above.  Look up via the lowercase form.
+    if (ev.key.length === 1) {
+        const lower = ev.key.toLowerCase();
+        const pair = asciiToHidPair(lower);
+        if (pair) return [mod, pair[1]];
+    }
+
+    return null;
 }
 
 
@@ -455,9 +505,36 @@ export class BadgeAPI {
 
     async wledSet(speed, intensity, palette) {
         await this._write([
-            ESCAPE, 'W'.charCodeAt(0),
+            ESCAPE, CMD_WLED_SET,
             speed & 0xff, intensity & 0xff, palette & 0xff,
         ]);
+    }
+
+    // ─── F01/F02 modifier-action table ─────────────────────────────────
+    //
+    // RAM-only on the firmware; bridges should re-send mappings on every
+    // CDC connect.  Sub-commands per dc29/protocol.py CMD_MOD_TABLE.
+
+    async setModifierAction(kind, btn, mod, key) {
+        // kind: 'double' | 'triple' | 'long'
+        const subMap = { double: 'D', triple: 'T', long: 'L' };
+        const sub = subMap[kind];
+        if (!sub) throw new Error(`unknown modifier kind '${kind}' — try double / triple / long`);
+        await this._write([
+            ESCAPE, CMD_MOD_TABLE, sub.charCodeAt(0),
+            btn & 0xff, mod & 0xff, key & 0xff,
+        ]);
+    }
+
+    async setChordAction(btnA, btnB, mod, key) {
+        await this._write([
+            ESCAPE, CMD_MOD_TABLE, 'C'.charCodeAt(0),
+            btnA & 0xff, btnB & 0xff, mod & 0xff, key & 0xff,
+        ]);
+    }
+
+    async clearAllModifierActions() {
+        await this._write([ESCAPE, CMD_MOD_TABLE, 'X'.charCodeAt(0)]);
     }
 
     async setSliderEnabled(enabled) {

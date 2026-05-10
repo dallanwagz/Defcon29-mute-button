@@ -315,6 +315,66 @@
   </div>
 
   <div class="panel">
+    <h2>F01/F02 modifier actions</h2>
+    <p class="hint">
+      Assign double-tap / triple-tap / long-press / chord actions per
+      button.  Same key syntax as the per-button keymap above.
+      <b>RAM-only</b> on the firmware — actions clear on every power
+      cycle, so re-apply after any unplug.
+    </p>
+    <div id="mod-actions-grid"><!-- 4 button cards --></div>
+    <p class="hint" style="margin-top: 16px"><b>Chord shortcuts</b> — two buttons pressed within 80 ms.</p>
+    <div id="mod-chords"><!-- 6 chord pair rows --></div>
+    <div class="row" style="margin-top: 12px">
+      <button id="btn-mod-clear" class="danger">Clear all modifier actions</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Macro recorder</h2>
+    <p class="hint">
+      Click into the textbox below and type whatever keystroke
+      sequence you want.  Modifiers are captured (Ctrl / Shift / Alt /
+      Cmd).  Save to a vault slot when done — vault slots hold up to
+      16 keystrokes.  Browser-level shortcuts (Cmd+Q, Cmd+W, etc.)
+      can't be intercepted; if you need those in your macro, use
+      "Type any string" or hand-write the keymap entry.
+    </p>
+    <div class="row">
+      <input type="text" id="mr-capture" placeholder="click here, then type your macro…" style="flex: 1">
+    </div>
+    <div class="row" style="margin-top: 8px">
+      <span id="mr-status" style="color: var(--text-muted); font-size: 13px">0 keystrokes captured</span>
+    </div>
+    <pre class="log" id="mr-display" style="margin-top: 8px; max-height: 80px">(nothing recorded yet)</pre>
+    <div class="row" style="margin-top: 8px">
+      <button id="btn-mr-save0">Save to vault slot 0</button>
+      <button id="btn-mr-save1">Save to vault slot 1</button>
+      <button id="btn-mr-clear" class="danger">Clear</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Share / load config</h2>
+    <p class="hint">
+      Encodes current LED swatches + WLED knobs into a URL hash.
+      Send the link to a friend; when they open it (and Connect),
+      the page offers to apply the shared config.
+      <b>Vault contents are never included</b> (those are sensitive
+      and stay on your badge).
+    </p>
+    <div class="row">
+      <button id="btn-share-build" class="primary">Generate share link</button>
+      <span id="share-status" style="color: var(--text-muted); font-size: 13px"></span>
+    </div>
+    <div id="share-incoming" style="display: none; margin-top: 12px; padding: 10px; border: 1px solid var(--accent); border-radius: 6px;">
+      <div id="share-incoming-summary" style="margin-bottom: 8px;"></div>
+      <button id="btn-share-apply" class="primary">Apply shared config</button>
+      <button id="btn-share-discard">Discard</button>
+    </div>
+  </div>
+
+  <div class="panel">
     <h2>Type any string (F06)</h2>
     <p class="hint">
       Sends arbitrary text to the focused window via the HID burst
@@ -375,7 +435,10 @@
 </footer>
 
 <script type="module">
-import { BadgeAPI, VAULT_SLOTS, TOTP_SLOTS, BeepPattern, asciiToHidPair } from "./protocol.js";
+import {
+    BadgeAPI, VAULT_SLOTS, VAULT_MAX_PAIRS, TOTP_SLOTS,
+    BeepPattern, asciiToHidPair, keyEventToHidPair,
+} from "./protocol.js";
 
 const badge = new BadgeAPI();
 const $ = (sel) => document.querySelector(sel);
@@ -935,6 +998,300 @@ $("#btn-hb-fire").addEventListener("click", async () => {
         btn.disabled = false;
     }
 });
+
+// ─── F01/F02 modifier-action editor (Tier 3.1)
+//
+// Reuses the keymap editor's parseKeyText / modifier checkboxes.  No
+// query path — firmware doesn't expose modifier-table state, so this
+// editor is write-only.  Each Set button sends one mod-table sub-cmd.
+
+function buildModRow({ label, action, btn, btnB }) {
+    // action: 'double' | 'triple' | 'long' | 'chord'
+    // btn / btnB: button numbers
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `
+        <label style="width: 110px">${label}</label>
+        <label><input type="checkbox" data-mod="ctrl"> Ctrl</label>
+        <label><input type="checkbox" data-mod="shift"> Shift</label>
+        <label><input type="checkbox" data-mod="alt"> Alt</label>
+        <label><input type="checkbox" data-mod="cmd"> Cmd</label>
+        <input type="text" class="key-input" placeholder="key…" style="flex: 1; max-width: 200px">
+        <button class="mod-set">Set</button>
+    `;
+    row.dataset.action = action;
+    row.dataset.btn    = btn;
+    if (btnB !== undefined) row.dataset.btnB = btnB;
+    return row;
+}
+
+function buildModActionsGrid() {
+    const grid = $("#mod-actions-grid");
+    grid.innerHTML = "";
+    grid.style.display = "grid";
+    grid.style.gridTemplateColumns = "1fr 1fr";
+    grid.style.gap = "16px";
+    for (let n = 1; n <= 4; n++) {
+        const card = document.createElement("div");
+        card.style.padding = "10px";
+        card.style.border = "1px solid var(--border)";
+        card.style.borderRadius = "6px";
+        const title = document.createElement("div");
+        title.style.color = "var(--accent)";
+        title.style.marginBottom = "6px";
+        title.textContent = `Button ${n}`;
+        card.appendChild(title);
+        card.appendChild(buildModRow({ label: "Double-tap", action: "double", btn: n }));
+        card.appendChild(buildModRow({ label: "Triple-tap", action: "triple", btn: n }));
+        card.appendChild(buildModRow({ label: "Long-press", action: "long",   btn: n }));
+        grid.appendChild(card);
+    }
+
+    const chordGrid = $("#mod-chords");
+    chordGrid.innerHTML = "";
+    const pairs = [[1,2],[1,3],[1,4],[2,3],[2,4],[3,4]];
+    for (const [a, b] of pairs) {
+        chordGrid.appendChild(buildModRow({ label: `B${a} + B${b}`, action: "chord", btn: a, btnB: b }));
+    }
+
+    grid.parentElement.addEventListener("click", onModRowAction);
+}
+
+async function onModRowAction(ev) {
+    const btn_el = ev.target.closest("button.mod-set");
+    if (!btn_el) return;
+    const row = btn_el.closest(".row");
+    const action = row.dataset.action;
+    const btn   = parseInt(row.dataset.btn, 10);
+    const btnB  = row.dataset.btnB ? parseInt(row.dataset.btnB, 10) : null;
+
+    const text = row.querySelector(".key-input").value;
+    let parsed;
+    try { parsed = parseKeyText(text); }
+    catch (err) { log(`mod ${action}: ${err.message}`, "err"); return; }
+
+    let mod = parsed.mod_extra;
+    if (parsed.mod_extra !== HID_MEDIA_FLAG) {
+        if (row.querySelector(`input[data-mod="ctrl"]`).checked)  mod |= HID_MOD_LCTRL;
+        if (row.querySelector(`input[data-mod="shift"]`).checked) mod |= HID_MOD_LSHIFT;
+        if (row.querySelector(`input[data-mod="alt"]`).checked)   mod |= HID_MOD_LALT;
+        if (row.querySelector(`input[data-mod="cmd"]`).checked)   mod |= HID_MOD_LGUI;
+    }
+
+    try {
+        if (action === "chord") {
+            await badge.setChordAction(btn, btnB, mod, parsed.key);
+            log(`chord B${btn}+B${btnB} → mod=0x${mod.toString(16).padStart(2,"0")} key=0x${parsed.key.toString(16).padStart(2,"0")}`, "ok");
+        } else {
+            await badge.setModifierAction(action, btn, mod, parsed.key);
+            log(`btn ${btn} ${action} → mod=0x${mod.toString(16).padStart(2,"0")} key=0x${parsed.key.toString(16).padStart(2,"0")}`, "ok");
+        }
+    } catch (err) {
+        log(`mod set: ${err.message}`, "err");
+    }
+}
+
+$("#btn-mod-clear").addEventListener("click", async () => {
+    try {
+        await badge.clearAllModifierActions();
+        log("all modifier actions cleared", "ok");
+    } catch (err) {
+        log(`mod clear: ${err.message}`, "err");
+    }
+});
+
+buildModActionsGrid();
+
+
+// ─── Macro recorder (Tier 3.3)
+let macroPairs = [];
+
+function macroPush(pair) {
+    macroPairs.push(pair);
+    macroRender();
+}
+
+function macroRender() {
+    const display = $("#mr-display");
+    const status  = $("#mr-status");
+    if (macroPairs.length === 0) {
+        display.textContent = "(nothing recorded yet)";
+        status.textContent = "0 keystrokes captured";
+        return;
+    }
+    const tokens = macroPairs.map(([m, k]) => {
+        const parts = [];
+        if (m & 0x01) parts.push("Ctrl");
+        if (m & 0x02) parts.push("Shift");
+        if (m & 0x04) parts.push("Alt");
+        if (m & 0x08) parts.push("Cmd");
+        // Try to render the key as a friendly name.
+        let keyStr = `0x${k.toString(16).padStart(2,"0")}`;
+        for (const [name, code] of Object.entries(HID_NAMED)) {
+            if (code === k) { keyStr = name; break; }
+        }
+        if (keyStr.startsWith("0x")) {
+            for (let cc = 0x20; cc < 0x7f; cc++) {
+                const ch = String.fromCharCode(cc);
+                const pp = asciiToHidPair(ch);
+                if (pp && pp[1] === k && pp[0] === 0) { keyStr = ch; break; }
+            }
+        }
+        parts.push(keyStr);
+        return parts.join("+");
+    });
+    display.textContent = tokens.join(", ");
+    const over = macroPairs.length > VAULT_MAX_PAIRS;
+    status.textContent = `${macroPairs.length} keystroke${macroPairs.length === 1 ? "" : "s"} captured`
+        + (over ? `  ⚠ vault holds only ${VAULT_MAX_PAIRS}` : "");
+    status.style.color = over ? "var(--accent-err)" : "var(--text-muted)";
+}
+
+$("#mr-capture").addEventListener("keydown", (ev) => {
+    const pair = keyEventToHidPair(ev);
+    if (!pair) return;
+    ev.preventDefault();
+    macroPush(pair);
+});
+
+$("#btn-mr-clear").addEventListener("click", () => {
+    macroPairs = [];
+    $("#mr-capture").value = "";
+    macroRender();
+});
+
+async function macroSaveToSlot(slot) {
+    if (macroPairs.length === 0) { log("macro: nothing to save", "err"); return; }
+    if (macroPairs.length > VAULT_MAX_PAIRS) {
+        log(`macro: ${macroPairs.length} pairs > ${VAULT_MAX_PAIRS} vault cap`, "err");
+        return;
+    }
+    try {
+        // Use the lower-level vaultWriteText path's underlying call by going
+        // through the existing badge.vaultWrite-ish surface.  We have
+        // vaultWriteText (text → pairs) but here we already have pairs; build
+        // the raw command directly.
+        const buf = [
+            0x01, 'v'.charCodeAt(0), 'W'.charCodeAt(0),
+            slot & 0xff, macroPairs.length & 0xff,
+        ];
+        for (const [m, k] of macroPairs) buf.push(m & 0xff, k & 0xff);
+        await badge._write(buf);
+        log(`macro: wrote ${macroPairs.length} pairs to slot ${slot}`, "ok");
+        await refreshVault();
+    } catch (err) {
+        log(`macro save: ${err.message}`, "err");
+    }
+}
+$("#btn-mr-save0").addEventListener("click", () => macroSaveToSlot(0));
+$("#btn-mr-save1").addEventListener("click", () => macroSaveToSlot(1));
+
+macroRender();
+
+
+// ─── Share / load config (Tier 3.2)
+//
+// Encodes the current LED color swatches + WLED knobs as base64-URL
+// JSON in window.location.hash.  Vault entries are NOT included by
+// design.  On page load, if a #cfg= is present, show a banner offering
+// to apply it after Connect.
+
+function snapshotConfig() {
+    const leds = [];
+    for (let i = 1; i <= 4; i++) {
+        const inp = document.querySelector(`input[type="color"][data-led="${i}"]`);
+        if (!inp) continue;
+        const hex = inp.value;
+        leds.push([
+            parseInt(hex.slice(1, 3), 16),
+            parseInt(hex.slice(3, 5), 16),
+            parseInt(hex.slice(5, 7), 16),
+        ]);
+    }
+    const wled = {
+        speed:     parseInt($("#wled-speed").value, 10),
+        intensity: parseInt($("#wled-int").value, 10),
+        palette:   parseInt($("#wled-pal").value, 10),
+    };
+    return { v: 1, leds, wled };
+}
+
+function encodeConfigToHash(cfg) {
+    const json = JSON.stringify(cfg);
+    return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeConfigFromHash(hashFragment) {
+    const padded = hashFragment.replace(/-/g, "+").replace(/_/g, "/");
+    const padN = (4 - padded.length % 4) % 4;
+    return JSON.parse(atob(padded + "=".repeat(padN)));
+}
+
+$("#btn-share-build").addEventListener("click", async () => {
+    const cfg = snapshotConfig();
+    const hash = "cfg=" + encodeConfigToHash(cfg);
+    const url = `${window.location.origin}${window.location.pathname}#${hash}`;
+    try {
+        await navigator.clipboard.writeText(url);
+        $("#share-status").textContent = "✓ link copied to clipboard";
+        log(`share link: ${url}`, "ok");
+    } catch (err) {
+        $("#share-status").textContent = `(copy failed — URL: ${url})`;
+        log(`share: clipboard write failed: ${err.message}`, "err");
+    }
+});
+
+let _incomingCfg = null;
+async function applyIncomingConfig() {
+    if (!_incomingCfg) return;
+    if (!badge.connected) { log("share apply: connect first", "err"); return; }
+    try {
+        if (_incomingCfg.leds) {
+            for (let i = 0; i < _incomingCfg.leds.length && i < 4; i++) {
+                const [r, g, b] = _incomingCfg.leds[i];
+                await badge.setLed(i + 1, r, g, b);
+                const inp = document.querySelector(`input[type="color"][data-led="${i + 1}"]`);
+                if (inp) inp.value = "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+            }
+        }
+        if (_incomingCfg.wled) {
+            const w = _incomingCfg.wled;
+            await badge.wledSet(w.speed | 0, w.intensity | 0, w.palette | 0);
+            $("#wled-speed").value = w.speed | 0;  $("#wled-speed-val").textContent = w.speed | 0;
+            $("#wled-int").value   = w.intensity | 0; $("#wled-int-val").textContent = w.intensity | 0;
+            $("#wled-pal").value   = w.palette | 0;
+        }
+        log("shared config applied", "ok");
+        $("#share-incoming").style.display = "none";
+        _incomingCfg = null;
+    } catch (err) {
+        log(`share apply: ${err.message}`, "err");
+    }
+}
+$("#btn-share-apply").addEventListener("click", applyIncomingConfig);
+$("#btn-share-discard").addEventListener("click", () => {
+    _incomingCfg = null;
+    $("#share-incoming").style.display = "none";
+    history.replaceState(null, "", window.location.pathname);
+});
+
+// On page load, decode any incoming #cfg=… and surface the banner.
+(function checkIncomingHash() {
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash.startsWith("cfg=")) return;
+    try {
+        const cfg = decodeConfigFromHash(hash.slice(4));
+        _incomingCfg = cfg;
+        const summary = [];
+        if (cfg.leds) summary.push(`${cfg.leds.length} LED color${cfg.leds.length === 1 ? "" : "s"}`);
+        if (cfg.wled) summary.push(`WLED (speed ${cfg.wled.speed}, intensity ${cfg.wled.intensity}, palette ${cfg.wled.palette})`);
+        $("#share-incoming-summary").textContent = `Found shared config: ${summary.join(" + ")}.  Apply after Connect?`;
+        $("#share-incoming").style.display = "block";
+    } catch (err) {
+        log(`share: malformed #cfg in URL (${err.message})`, "err");
+    }
+})();
+
 
 // ─── Self-check on load
 if (!('serial' in navigator)) {
