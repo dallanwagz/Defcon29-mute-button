@@ -1,6 +1,6 @@
 # F11 — WebUSB config UI
 
-> Status: **web app + workflow shipped (WebSerial-only); WebUSB descriptors reverted; Chrome roundtrip pending GH Pages enable** · Risk: **medium** (was high; dropped firmware risk by ditching WebUSB) · Owner: firmware (now zero) + web app
+> Status: **hardware-verified end-to-end via Chrome on macOS** · Risk: **low** (zero firmware in final design) · Owner: web app
 
 ## Goal
 
@@ -198,8 +198,8 @@ _To be filled in after manual verification._
 - [x] Firmware code complete — **zero firmware change** in the final design (see "Architecture pivot" below).  The stage-1 WebUSB descriptors were implemented, flashed, and then reverted after we decided the auto-suggest UX wasn't worth the firmware-↔-URL coupling.
 - [x] Web app code complete — `web/dc29-config/index.html` + `protocol.js`.  Vanilla JS (no framework), single page.
 - [x] Build passes (≤ 56 KB) — back to 51008 B post-revert.
-- [ ] GitHub Pages deploy live (deferred — **user must enable Pages** in repo Settings → Pages → Source: **GitHub Actions** before the workflow can publish).
-- [ ] Web app pairs to badge, performs end-to-end edit-and-write (deferred to user-side Chrome roundtrip).
+- [x] GitHub Pages deploy live — `https://dallanwagz.github.io/Defcon29-mute-button/` (Pages enabled in repo settings, GH Actions workflow auto-deploys on push to main when `web/dc29-config/**` changes)
+- [x] Web app pairs to badge, performs end-to-end edit-and-write — verified 2026-05-10 via Chrome on macOS: WebSerial port picker → connect → vault write/list/fire (the fire button got a 3 s countdown so the user has time to alt-tab away from Chrome before keystrokes land), LED color picker live-paints, beep patterns audible, Stay Awake pulse fires.
 - [x] No regression to existing CDC/HID behavior — verified post-revert 2026-05-09: `dc29 vault list` returned both slots, EEPROM persisted across the WebUSB flash + revert flash.
 
 ## Architecture pivot — WebSerial only (2026-05-09)
