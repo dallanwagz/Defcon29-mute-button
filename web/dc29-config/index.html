@@ -374,6 +374,36 @@
     </div>
   </div>
 
+  <div class="panel" id="bridges-panel">
+    <h2>App bridges (Teams / Slack / Outlook)</h2>
+    <p class="hint">
+      In-browser equivalent of the Python <code>dc29</code> bridges.
+      <b>Manual buttons</b> fire the same HID shortcuts the bridges
+      do — focus the target app first (2 s countdown).  Each section
+      also has a state toggle that drives the matching LED state
+      (Teams meeting/mute on LED 4, Slack huddle on LED 2,
+      Outlook unread count on LED 1).<br>
+      <b>For real automation</b>, the BroadcastChannel listener (below)
+      accepts messages from any same-browser context — install one of
+      the sample userscripts in
+      <a href="https://github.com/dallanwagz/Defcon29-mute-button/tree/main/web/dc29-config/userscripts" target="_blank">
+        <code>web/dc29-config/userscripts/</code></a> via Tampermonkey
+      to get auto state-detection from teams.microsoft.com / slack.com /
+      outlook.office.com.
+    </p>
+    <div id="bridges-cards"><!-- 3 cards built by JS --></div>
+    <div class="row" style="margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--border)">
+      <span style="color: var(--accent)"><b>BroadcastChannel listener</b></span>
+      <label style="margin-left: 12px"><input type="checkbox" id="cb-bridge-listener" checked> active</label>
+      <span id="bridge-listener-status" style="color: var(--text-muted); font-size: 13px; margin-left: 12px">
+        0 messages received
+      </span>
+    </div>
+    <pre class="log" id="bridge-listener-log" style="margin-top: 6px; max-height: 100px">
+(messages on channel 'dc29-bridge-events' will appear here)
+    </pre>
+  </div>
+
   <div class="panel">
     <h2>Audio reactive (browser)</h2>
     <p class="hint">
@@ -482,6 +512,7 @@ import {
 } from "./protocol.js";
 import { startTour, resetOnboarding } from "./onboarding.js";
 import { AudioReactiveEngine, startScreenCapture } from "./audio_reactive.js";
+import { BridgeListener, BRIDGE_ACTIONS } from "./bridges.js";
 
 const badge = new BadgeAPI();
 const $ = (sel) => document.querySelector(sel);
@@ -1334,6 +1365,158 @@ $("#btn-share-discard").addEventListener("click", () => {
         log(`share: malformed #cfg in URL (${err.message})`, "err");
     }
 })();
+
+
+// ─── App bridges (Phase 3)
+//
+// Manual action buttons fire HID shortcuts via badge.hidBurst (with a
+// 2 s countdown so user can switch focus).  State toggles drive the
+// matching LED.  BroadcastChannel listener stays running in the
+// background for messages from userscripts / dev tools.
+
+const bridgeListener = new BridgeListener(badge, {
+    onMessage: (msg) => {
+        bridgeListenerLog(`← ${JSON.stringify(msg)}`);
+    },
+});
+window.__bridgeListener = bridgeListener;   // exposed for Playwright
+
+const bridgeLogLines = [];
+function bridgeListenerLog(line) {
+    const ts = new Date().toTimeString().slice(0, 8);
+    bridgeLogLines.unshift(`[${ts}] ${line}`);
+    while (bridgeLogLines.length > 20) bridgeLogLines.pop();
+    $("#bridge-listener-log").textContent = bridgeLogLines.join("\n");
+    $("#bridge-listener-status").textContent =
+        `${bridgeListener.messageCount} message${bridgeListener.messageCount === 1 ? "" : "s"} received`;
+}
+
+function buildBridgesCards() {
+    const container = $("#bridges-cards");
+    container.innerHTML = "";
+    container.style.display = "grid";
+    container.style.gridTemplateColumns = "1fr 1fr 1fr";
+    container.style.gap = "12px";
+    if (window.matchMedia("(max-width: 720px)").matches) {
+        container.style.gridTemplateColumns = "1fr";
+    }
+
+    const apps = [
+        {
+            key: "teams", title: "Teams",
+            stateButtons: [
+                { label: "I'm in a meeting",  msg: { type: "teams.meetingChanged", inMeeting: true } },
+                { label: "Meeting ended",     msg: { type: "teams.meetingChanged", inMeeting: false } },
+                { label: "I muted",           msg: { type: "teams.muteChanged", muted: true } },
+                { label: "I unmuted",         msg: { type: "teams.muteChanged", muted: false } },
+            ],
+        },
+        {
+            key: "slack", title: "Slack",
+            stateButtons: [
+                { label: "Joined huddle",     msg: { type: "slack.huddleChanged", inHuddle: true } },
+                { label: "Left huddle",       msg: { type: "slack.huddleChanged", inHuddle: false } },
+            ],
+        },
+        {
+            key: "outlook", title: "Outlook",
+            stateButtons: [
+                { label: "5 unread",  msg: { type: "outlook.unreadChanged", count: 5  } },
+                { label: "0 unread",  msg: { type: "outlook.unreadChanged", count: 0  } },
+            ],
+        },
+    ];
+
+    for (const app of apps) {
+        const card = document.createElement("div");
+        card.style.padding = "10px";
+        card.style.border = "1px solid var(--border)";
+        card.style.borderRadius = "6px";
+
+        const title = document.createElement("div");
+        title.style.color = "var(--accent)";
+        title.style.fontWeight = "600";
+        title.style.marginBottom = "8px";
+        title.textContent = app.title;
+        card.appendChild(title);
+
+        // Action buttons (HID shortcut firing).
+        const actionLabel = document.createElement("div");
+        actionLabel.style.color = "var(--text-muted)";
+        actionLabel.style.fontSize = "12px";
+        actionLabel.style.marginBottom = "4px";
+        actionLabel.textContent = "Actions (focus the app first):";
+        card.appendChild(actionLabel);
+
+        for (const [name, action] of Object.entries(BRIDGE_ACTIONS[app.key])) {
+            const btn = document.createElement("button");
+            btn.textContent = action.label;
+            btn.style.margin = "2px 4px 2px 0";
+            btn.style.fontSize = "12px";
+            btn.dataset.bridgeAction = `${app.key}.${name}`;
+            btn.addEventListener("click", () => fireBridgeAction(btn, app.key, name));
+            card.appendChild(btn);
+        }
+
+        // State toggles (drive LEDs via the listener).
+        const stateLabel = document.createElement("div");
+        stateLabel.style.color = "var(--text-muted)";
+        stateLabel.style.fontSize = "12px";
+        stateLabel.style.marginTop = "10px";
+        stateLabel.textContent = "Manual state (drives LEDs):";
+        card.appendChild(stateLabel);
+
+        for (const sb of app.stateButtons) {
+            const btn = document.createElement("button");
+            btn.textContent = sb.label;
+            btn.style.margin = "2px 4px 2px 0";
+            btn.style.fontSize = "12px";
+            btn.dataset.bridgeState = JSON.stringify(sb.msg);
+            btn.addEventListener("click", async () => {
+                try {
+                    await bridgeListener._handle(sb.msg);   // run the same dispatch path as a real BC message
+                    log(`bridge state: ${sb.label}`, "ok");
+                } catch (err) {
+                    log(`bridge state: ${err.message}`, "err");
+                }
+            });
+            card.appendChild(btn);
+        }
+
+        container.appendChild(card);
+    }
+}
+
+async function fireBridgeAction(btnEl, app, name) {
+    const original = btnEl.textContent;
+    btnEl.disabled = true;
+    try {
+        for (let i = 2; i > 0; i--) {
+            btnEl.textContent = `${original} (${i})`;
+            await new Promise((r) => setTimeout(r, 1000));
+        }
+        btnEl.textContent = `${original}…`;
+        await bridgeListener.fireAction(app, name);
+        log(`fired ${app}.${name}`, "ok");
+    } catch (err) {
+        log(`bridge action: ${err.message}`, "err");
+    } finally {
+        btnEl.textContent = original;
+        btnEl.disabled = false;
+    }
+}
+
+$("#cb-bridge-listener").addEventListener("change", (ev) => {
+    if (ev.target.checked) { bridgeListener.start(); log("bridge listener: active"); }
+    else                   { bridgeListener.stop();  log("bridge listener: stopped"); }
+});
+
+// Auto-start the BroadcastChannel listener on load.
+if ("BroadcastChannel" in window) {
+    try { bridgeListener.start(); }
+    catch (err) { log(`bridge listener: ${err.message}`, "err"); }
+}
+buildBridgesCards();
 
 
 // ─── Audio reactive (Phase 2)

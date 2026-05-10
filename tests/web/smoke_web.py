@@ -484,6 +484,149 @@ def test_rx_driven_panels(p) -> None:
 
 # ─── Entry point ──────────────────────────────────────────────────────
 
+def test_bridges(browser) -> None:
+    section("App bridges (manual actions + BroadcastChannel listener)")
+    with page_with_console_capture(browser) as page:
+        page.add_init_script(MOCK_SERIAL_INIT)
+        page.goto(URL, wait_until="networkidle", timeout=15000)
+        page.click("#btn-connect")
+        page.wait_for_function(
+            "document.querySelector('#status').classList.contains('connected')",
+            timeout=5000,
+        )
+
+        # Panel renders with all three app cards.
+        check("Bridges panel renders", page.locator("h2:has-text('App bridges')").count() == 1)
+        for app in ("Teams", "Slack", "Outlook"):
+            present = page.locator(f"#bridges-cards >> text='{app}'").count() > 0
+            check(f"{app} card present", present)
+
+        # ── Manual action button: Teams toggle mute → Cmd+Shift+m
+        # via badge.hidBurst([(mod, key)])  → 0x01 'h' 0x01 0x00 mod key
+        # mod = cmd|shift = 0x08|0x02 = 0x0a; key = 'm' = 0x10
+        def reset_tx():
+            page.evaluate("() => { window.__mockTx = []; }")
+
+        def tx() -> list[list[int]]:
+            return page.evaluate("() => window.__mockTx")
+
+        # Skip the 2-second countdown in the action handler by calling the
+        # underlying API directly.
+        reset_tx()
+        page.evaluate("() => window.__bridgeListener.fireAction('teams', 'mute')")
+        page.wait_for_function("window.__mockTx.length > 0", timeout=2000)
+        bytes_sent = sum(tx(), [])
+        # 0x01 'h' 1 0 0x0a 0x10
+        check("Teams 'mute' action → 0x01 'h' 01 00 0a 10",
+              bytes_sent == [0x01, ord('h'), 1, 0, 0x0a, 0x10],
+              str(bytes_sent))
+
+        # ── Slack 'all-unreads' → Cmd+Shift+a; mod=0x0a, key=0x04
+        reset_tx()
+        page.evaluate("() => window.__bridgeListener.fireAction('slack', 'all-unreads')")
+        page.wait_for_function("window.__mockTx.length > 0", timeout=2000)
+        bytes_sent = sum(tx(), [])
+        check("Slack 'all-unreads' → mod 0x0a key 0x04",
+              bytes_sent == [0x01, ord('h'), 1, 0, 0x0a, 0x04],
+              str(bytes_sent))
+
+        # ── Outlook 'delete' → Cmd+Backspace; mod=0x08 key=0x2a
+        reset_tx()
+        page.evaluate("() => window.__bridgeListener.fireAction('outlook', 'delete')")
+        page.wait_for_function("window.__mockTx.length > 0", timeout=2000)
+        bytes_sent = sum(tx(), [])
+        check("Outlook 'delete' → mod 0x08 key 0x2a",
+              bytes_sent == [0x01, ord('h'), 1, 0, 0x08, 0x2a],
+              str(bytes_sent))
+
+        # ── BroadcastChannel listener: inject teams meeting + mute,
+        # verify badge.setLed gets called with red (220, 0, 0).
+        reset_tx()
+        page.evaluate(
+            r"""async () => {
+                await window.__bridgeListener._handle({ type: "teams.meetingChanged", inMeeting: true });
+                await window.__bridgeListener._handle({ type: "teams.muteChanged",    muted: true });
+            }"""
+        )
+        page.wait_for_function("window.__mockTx.length >= 2", timeout=2000)
+        all_tx = tx()
+        # Meeting=true: setLed(4, 0, 0, 0)? No — initial state is muted=false,
+        # so meeting-on => green.  Then mute=true => red.
+        # Find the LED-set commands.
+        led_writes = [b for b in all_tx if len(b) == 6 and b[0] == 0x01 and b[1] == ord('L')]
+        check("meeting+mute → 2 LED writes to LED 4",
+              len(led_writes) == 2 and all(b[2] == 4 for b in led_writes),
+              str(led_writes))
+        check("first LED write = green (meeting-on, not muted yet)",
+              led_writes[0] == [0x01, ord('L'), 4, 0, 200, 0],
+              str(led_writes[0]))
+        check("second LED write = red (muted)",
+              led_writes[1] == [0x01, ord('L'), 4, 220, 0, 0],
+              str(led_writes[1]))
+
+        # ── Slack huddle on/off
+        reset_tx()
+        page.evaluate(r"""async () => {
+            await window.__bridgeListener._handle({ type: "slack.huddleChanged", inHuddle: true });
+            await window.__bridgeListener._handle({ type: "slack.huddleChanged", inHuddle: false });
+        }""")
+        page.wait_for_function("window.__mockTx.length >= 2", timeout=2000)
+        led_writes = [b for b in tx() if len(b) == 6 and b[0] == 0x01 and b[1] == ord('L') and b[2] == 2]
+        check("slack.huddleChanged → 2 LED 2 writes (cyan, off)",
+              len(led_writes) == 2,
+              str(led_writes))
+
+        # ── Outlook unread count → LED 1 brightness
+        reset_tx()
+        page.evaluate(r"""async () => {
+            await window.__bridgeListener._handle({ type: "outlook.unreadChanged", count: 7 });
+        }""")
+        page.wait_for_function("window.__mockTx.length > 0", timeout=2000)
+        bytes_sent = sum(tx(), [])
+        # count=7 → brightness=70 → setLed(1, 70, 70, 0)
+        check("outlook.unreadChanged 7 → setLed(1, 70, 70, 0)",
+              bytes_sent == [0x01, ord('L'), 1, 70, 70, 0],
+              str(bytes_sent))
+
+        # ── Real BroadcastChannel from another context → listener picks up
+        # Two new pages in the same browser; both share BroadcastChannel.
+        # Suppress the modal in both pages so they're clean.
+        ctx2 = browser.new_context()
+        page2 = ctx2.new_page()
+        page2.add_init_script(SUPPRESS_ONBOARDING)
+        page2.goto(URL, wait_until="networkidle", timeout=15000)
+        # Note: each context is its own browser-storage partition so
+        # BroadcastChannel does NOT cross contexts.  We have to use the
+        # same context.  Open a second tab in the existing context.
+        ctx2.close()
+
+        # Use a second tab in the original context.
+        existing_ctx = page.context
+        page3 = existing_ctx.new_page()
+        page3.add_init_script(SUPPRESS_ONBOARDING)
+        page3.goto(URL, wait_until="networkidle", timeout=15000)
+        # Reset the badge mock TX on the listener page.
+        page.evaluate("() => { window.__mockTx = []; }")
+        # Post a BroadcastChannel message from page3.
+        page3.evaluate(r"""() => {
+            const bc = new BroadcastChannel('dc29-bridge-events');
+            bc.postMessage({ type: 'teams.muteChanged', muted: false });
+        }""")
+        # Listener on page should have received it and updated badge.
+        # The state machine: meeting was set to true earlier on `page`
+        # AND mute was true.  This unmutes → setLed(4, 0, 200, 0) (green).
+        try:
+            page.wait_for_function("window.__mockTx.length > 0", timeout=2000)
+            sent = sum(page.evaluate("() => window.__mockTx"), [])
+            check("BroadcastChannel from second tab reaches listener (LED green)",
+                  sent == [0x01, ord('L'), 4, 0, 200, 0],
+                  str(sent))
+        except Exception as exc:
+            check("BroadcastChannel from second tab reaches listener", False, str(exc))
+        finally:
+            page3.close()
+
+
 def test_audio_reactive(browser) -> None:
     section("Audio-reactive engine (synthetic FFT data)")
     with page_with_console_capture(browser) as page:
@@ -629,6 +772,7 @@ def main() -> int:
             test_mocked_serial_protocol(browser)
             test_rx_driven_panels(browser)
             test_audio_reactive(browser)
+            test_bridges(browser)
             test_onboarding_tour(browser)
         except Exception as exc:
             print(f"\nFATAL: {type(exc).__name__}: {exc}")
