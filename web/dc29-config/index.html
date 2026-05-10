@@ -339,8 +339,23 @@ async function onVaultAction(ev) {
             input.value = "";
             await refreshVault();
         } else if (action === "fire") {
+            // 3-second countdown — keystrokes go to whichever window has focus
+            // AT THE MOMENT THE BURST FIRES, so the user needs time to alt-tab
+            // away from Chrome.  Disable the button + repaint label each tick.
+            const original = btn.textContent;
+            btn.disabled = true;
+            for (let i = 3; i > 0; i--) {
+                btn.textContent = `Firing in ${i}…`;
+                log(`firing slot ${slot} in ${i}s — switch focus to your target window now`);
+                await new Promise((r) => setTimeout(r, 1000));
+            }
+            btn.textContent = "Firing…";
             await badge.vaultFire(slot);
             log(`fired slot ${slot}`, "ok");
+            // Wait for the burst to finish before re-enabling (16 pairs × ~10 ms = 160 ms; pad).
+            await new Promise((r) => setTimeout(r, 500));
+            btn.textContent = original;
+            btn.disabled = false;
         } else if (action === "clear") {
             await badge.vaultClear(slot);
             log(`cleared slot ${slot}`, "ok");
