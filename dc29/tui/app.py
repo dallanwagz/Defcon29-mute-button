@@ -2044,7 +2044,8 @@ class BridgesTab(Container):
             classes="restart-hint",
         )
         yield Rule()
-        for spec in BRIDGE_MANIFEST:
+        _PRIORITY = {"teams": 0, "outlook": 1}
+        for spec in sorted(BRIDGE_MANIFEST, key=lambda s: (_PRIORITY.get(s.name, 2), s.name)):
             with Vertical(classes="bridge-row"):
                 yield Checkbox(
                     f"{spec.name}  —  {spec.description}",
